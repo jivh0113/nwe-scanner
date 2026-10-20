@@ -6518,6 +6518,49 @@ async function runLuxScan() {
   if(status) status.textContent=`共 ${totalSignals} 個訊號`;
   if(btn1) { btn1.disabled=false; btn1.textContent='📡 NWE掃描'; }
   if(btn2) { btn2.disabled=false; btn2.textContent='🔍 開始掃描'; }
+
+  // Telegram推播
+  _tgNotify(tfResults);
+}
+
+// ══════════ Telegram推播 ══════════
+const _TG_TOKEN = '8999488432:AAG5OlXC58i_I4Zqs_Q3r9zZdFYSDePBGLo';
+const _TG_CHAT  = '6037933384';
+if (!window._tgSentKeys) window._tgSentKeys = new Set();
+
+async function _tgNotify(tfResults) {
+  const msgs = [];
+  for (const tf of ['15m','30m','1h','4h']) {
+    const { bull, bear } = tfResults[tf] || { bull:[], bear:[] };
+    for (const r of [...bull, ...bear]) {
+      const isBull = bull.includes(r);
+      const tpsl = (() => {
+        const mag = Math.pow(10, Math.floor(Math.log10(r.price)) - 1);
+        const rawTP = isBull ? Math.ceil(r.price/mag)*mag : Math.floor(r.price/mag)*mag;
+        const capTP = isBull ? r.price*1.03 : r.price*0.97;
+        const tp = isBull ? Math.min(rawTP,capTP) : Math.max(rawTP,capTP);
+        const sl = isBull ? r.price*0.92 : r.price*1.08;
+        return { tp, sl };
+      })();
+      const key = `${r.sym}_${tf}_${r.time||''}`;
+      if (window._tgSentKeys.has(key)) continue;
+      window._tgSentKeys.add(key);
+      const dir = isBull ? '做多 🟢' : '做空 🔴';
+      const wrMap = tf==='1h'?(window._wrMap1h||{}):tf==='4h'?(window._wrMap4h||{}):tf==='15m'?(window._wrMap15m||{}):(window._wrMap30m||{});
+      const wr = wrMap[r.sym+'USDT'];
+      const wrStr = wr!=null ? `勝率: ${wr.toFixed(1)}%` : '';
+      msgs.push(`📡 NWE訊號 [${tf.toUpperCase()}]\n${r.sym} ${dir}\n進場: ${r.price}\nTP: ${tpsl.tp.toFixed(4)}  SL: ${tpsl.sl.toFixed(4)}\n${wrStr}`);
+    }
+  }
+  for (const msg of msgs) {
+    try {
+      await fetch(`https://api.telegram.org/bot${_TG_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ chat_id: _TG_CHAT, text: msg })
+      });
+    } catch(e) {}
+  }
 }
 
 
