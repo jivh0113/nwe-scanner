@@ -7353,15 +7353,16 @@ function _calcSecsToNextBar() {
   return (nextBar * 60) - seconds;
 }
 
-function startAutoScan() {
-  runLuxScan();
+async function startAutoScan() {
+  await runLuxScan();
   _autoScanCountdown = _calcSecsToNextBar();
   if (_autoScanTick) clearInterval(_autoScanTick);
-  _autoScanTick = setInterval(() => {
+  _autoScanTick = setInterval(async () => {
     _autoScanCountdown--;
     if (_autoScanCountdown <= 0) {
+      _autoScanCountdown = 999;
+      await runLuxScan();
       _autoScanCountdown = _calcSecsToNextBar();
-      runLuxScan();
     }
     const m = Math.floor(_autoScanCountdown / 60);
     const s = _autoScanCountdown % 60;
