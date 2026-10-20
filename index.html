@@ -7205,7 +7205,7 @@ async function calcWinRates() {
   }
 
   async function _btSym(sym, tf) {
-    const limit = tf==='1h' ? 1500 : 1000;
+    const limit = 1500;
     try {
       const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=${limit}`);
       if (!r.ok) return null;
@@ -7233,11 +7233,13 @@ async function calcWinRates() {
         const isL=pc<=lo, isS=pc>=hi;
         if (!isL&&!isS) continue;
         const entry=closes[i];
-        const tp=_findRoundLevel(entry, isL);
+        const rawTP=_findRoundLevel(entry, isL);
+        const capTP=isL?entry*1.03:entry*0.97;
+        const tp=isL?Math.min(rawTP,capTP):Math.max(rawTP,capTP);
         if (Math.abs(tp-entry)/entry<=0.001) continue;
         const sl=isL?entry*(1-_SL_PCT):entry*(1+_SL_PCT);
         let res=null;
-        for (let f=i+1; f<n&&f<=i+10; f++) {
+        for (let f=i+1; f<n&&f<=i+500; f++) {
           const h=highs[f], lv=lows[f];
           if (isL){if(lv<=sl){res='L';break;}if(h>=tp){res='W';break;}}
           else    {if(h>=sl){res='L';break;}if(lv<=tp){res='W';break;}}
