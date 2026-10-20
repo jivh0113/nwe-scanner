@@ -952,7 +952,8 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#0f766e;letter-spacing:1px;font-weight:600">▸ 📡 NWE掃描</span>
     <div style="display:flex;align-items:center;gap:8px">
-      <span id="nweStatus" style="font-size:11px;color:#94a3b8"></span>
+      <span id="nweStatus" style="font-size:11px;color:#0f766e;font-weight:600;font-family:'JetBrains Mono',monospace"></span>
+      <span id="nweCountdown" style="font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-right:4px"></span>
       <button onclick="runLuxScan()" id="luxBtn2" style="font-size:11px;padding:4px 14px;border:none;border-radius:4px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;cursor:pointer;font-weight:600">🔍 開始掃描</button>
     </div>
   </div>
@@ -7297,8 +7298,29 @@ async function calcWinRates() {
   if (typeof window._lastScanRender === 'function') window._lastScanRender();
 }
 
+// 自動重掃（每15分鐘）
+let _autoScanCountdown = 0;
+let _autoScanTick = null;
+
+function startAutoScan() {
+  runLuxScan();
+  _autoScanCountdown = 15 * 60;
+  if (_autoScanTick) clearInterval(_autoScanTick);
+  _autoScanTick = setInterval(() => {
+    _autoScanCountdown--;
+    if (_autoScanCountdown <= 0) {
+      _autoScanCountdown = 15 * 60;
+      runLuxScan();
+    }
+    const m = Math.floor(_autoScanCountdown / 60);
+    const s = _autoScanCountdown % 60;
+    const el = document.getElementById('nweCountdown');
+    if (el) el.textContent = `下次掃描 ${m}:${s.toString().padStart(2,'0')}`;
+  }, 1000);
+}
+
 // Auto-load BTC on start
-window.onload = () => { loadData(); calcWinRates(); };
+window.onload = () => { loadData(); calcWinRates(); startAutoScan(); };
 </script>
 
 
