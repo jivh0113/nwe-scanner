@@ -7345,14 +7345,22 @@ async function calcWinRates() {
 let _autoScanCountdown = 0;
 let _autoScanTick = null;
 
+function _calcSecsToNextBar() {
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  const nextBar = 15 - (minutes % 15);
+  return (nextBar * 60) - seconds;
+}
+
 function startAutoScan() {
   runLuxScan();
-  _autoScanCountdown = 15 * 60;
+  _autoScanCountdown = _calcSecsToNextBar();
   if (_autoScanTick) clearInterval(_autoScanTick);
   _autoScanTick = setInterval(() => {
     _autoScanCountdown--;
     if (_autoScanCountdown <= 0) {
-      _autoScanCountdown = 15 * 60;
+      _autoScanCountdown = _calcSecsToNextBar();
       runLuxScan();
     }
     const m = Math.floor(_autoScanCountdown / 60);
