@@ -6529,6 +6529,7 @@ const _TG_CHAT  = '6037933384';
 if (!window._tgSentKeys) window._tgSentKeys = new Set();
 
 async function _tgNotify(tfResults) {
+  window._tgSentKeys = new Set();
   const msgs = [];
   for (const tf of ['15m','30m','1h','4h']) {
     const { bull, bear } = tfResults[tf] || { bull:[], bear:[] };
