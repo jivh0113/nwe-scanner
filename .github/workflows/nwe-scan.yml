@@ -1,0 +1,24 @@
+name: NWE Scanner
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 每小時整點執行
+  workflow_dispatch:       # 也可手動觸發
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run NWE scan
+        run: python scan.py
