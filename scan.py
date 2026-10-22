@@ -91,21 +91,21 @@ def calc_nwe(closes):
     mae = sum(abs(closes[i] - outs[i]) for i in range(n)) / n * LUX_MULT
     return outs, mae
 
-def calc_winrate(closes_all, sig_idx, is_long, tp, sl):
+def calc_winrate(closes_all, is_long):
     wins = 0
     total = 0
     n = len(closes_all)
-    # 從歷史訊號回測（排除最後幾根，確保有足夠回測空間）
-    for i in range(100, sig_idx):
-        # 重新找這根的訊號價（用當時的 cur_close）
-        entry = float(closes_all[i])
+    # 只用最近 500 根回測
+    start = max(100, n - 500)
+    for i in range(start, n - 1):
+        entry = closes_all[i]
         tp_i = find_round_tp(entry, is_long)
         if abs(tp_i - entry) / entry <= 0.001:
             continue
         sl_i = entry * (1 - SL_PCT) if is_long else entry * (1 + SL_PCT)
         hit = None
         for j in range(i+1, min(i+501, n)):
-            hi = float(closes_all[j])  # 用收盤價簡化（跟網頁一致）
+            hi = closes_all[j]
             if is_long:
                 if hi >= tp_i:
                     hit = 'win'
@@ -177,9 +177,8 @@ def scan_tf(tf):
         tp_pct = (tp - cur_close) / cur_close * 100
         lev_pct = tp_pct * 12
 
-        # 勝率回測
-        sig_idx = len(closes) - 1
-        winrate = calc_winrate(closes, sig_idx, is_long, tp, sl)
+        # 勝率回測（用 src = closes[-1501:-1]，最近500根）
+        winrate = calc_winrate(src, is_long)
 
         signals.append({
             'sym': sym.replace('USDT',''),
