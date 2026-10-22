@@ -91,6 +91,43 @@ def calc_nwe(closes):
     mae = sum(abs(closes[i] - outs[i]) for i in range(n)) / n * LUX_MULT
     return outs, mae
 
+def calc_winrate(closes_all, sig_idx, is_long, tp, sl):
+    wins = 0
+    total = 0
+    n = len(closes_all)
+    # 從歷史訊號回測（排除最後幾根，確保有足夠回測空間）
+    for i in range(100, sig_idx):
+        # 重新找這根的訊號價（用當時的 cur_close）
+        entry = float(closes_all[i])
+        tp_i = find_round_tp(entry, is_long)
+        if abs(tp_i - entry) / entry <= 0.001:
+            continue
+        sl_i = entry * (1 - SL_PCT) if is_long else entry * (1 + SL_PCT)
+        hit = None
+        for j in range(i+1, min(i+501, n)):
+            hi = float(closes_all[j])  # 用收盤價簡化（跟網頁一致）
+            if is_long:
+                if hi >= tp_i:
+                    hit = 'win'
+                    break
+                if hi <= sl_i:
+                    hit = 'loss'
+                    break
+            else:
+                if hi <= tp_i:
+                    hit = 'win'
+                    break
+                if hi >= sl_i:
+                    hit = 'loss'
+                    break
+        if hit:
+            total += 1
+            if hit == 'win':
+                wins += 1
+    if total == 0:
+        return None
+    return wins / total * 100
+
 def scan_tf(tf):
     syms = SYMS_MAP[tf]
     signals = []
@@ -140,6 +177,10 @@ def scan_tf(tf):
         tp_pct = (tp - cur_close) / cur_close * 100
         lev_pct = tp_pct * 12
 
+        # 勝率回測
+        sig_idx = len(closes) - 1
+        winrate = calc_winrate(closes, sig_idx, is_long, tp, sl)
+
         signals.append({
             'sym': sym.replace('USDT',''),
             'tf': tf,
@@ -150,6 +191,7 @@ def scan_tf(tf):
             'tp_pct': tp_pct,
             'lev_pct': lev_pct,
             'time': sig_time,
+            'winrate': winrate,
         })
         time.sleep(0.05)  # 避免打太快
 
@@ -174,12 +216,14 @@ def main():
         return
 
     for s in all_signals:
+        wr_str = f"{s['winrate']:.1f}%" if s['winrate'] is not None else 'N/A'
         msg = (
             f"📡 NWE訊號 [{s['tf'].upper()}]\n"
             f"{s['sym']} {s['direction']}\n"
             f"進場: {s['price']}\n"
             f"TP: {s['tp']:.4f}  ({s['tp_pct']:+.1f}%  12x: {s['lev_pct']:+.0f}%)\n"
             f"SL: {s['sl']:.4f}\n"
+            f"勝率: {wr_str}\n"
             f"訊號時間: {s['time']}"
         )
         send_tg(msg)
