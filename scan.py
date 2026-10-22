@@ -99,9 +99,21 @@ def scan_tf(tf):
         closes = [float(k[4]) for k in raw]
         sig_ts = raw[-2][6] / 1000  # 前一根K線收盤時間(秒)
 
+        # debug
+        if sym == 'TIAUSDT' and tf == '4h':
+            age = now_ts - sig_ts
+            print(f'DEBUG TIAUSDT 4h: now={now_ts}, sig_ts={sig_ts}, age={age}s, max_age={max_age}s, pass={age<=max_age}')
+
         # 時效過濾
         if now_ts - sig_ts > max_age:
             continue
+
+        # debug NWE
+        if sym == 'TIAUSDT' and tf == '4h':
+            src2 = closes[-1501:-1]
+            outs2, mae2 = calc_nwe(src2)
+            out2 = outs2[-1]
+            print(f'DEBUG TIAUSDT 4h NWE: out={out2:.6f}, mae={mae2:.6f}, upper={out2+mae2:.6f}, lower={out2-mae2:.6f}, prev_close={src2[-1]:.6f}, cur_close={closes[-1]:.6f}')
 
         src = closes[-1501:-1]
         n = len(src)
