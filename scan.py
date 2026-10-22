@@ -63,18 +63,15 @@ def find_round_tp(price, is_bull):
     return min(raw, cap) if is_bull else max(raw, cap)
 
 ENDPOINTS = [
-    'https://fapi.binance.com/fapi/v1/klines',   # 合約API（GitHub Actions可用）
-    'https://api.binance.com/api/v3/klines',       # 現貨API（備用）
-    'https://api1.binance.com/api/v3/klines',
-    'https://api2.binance.com/api/v3/klines',
-    'https://api3.binance.com/api/v3/klines',
+    'https://data-api.binance.vision/api/v3/klines',  # Binance 公開CDN，不封IP
+    'https://api.binance.com/api/v3/klines',           # 備用
 ]
 
 def fetch_klines(sym, tf, limit=1502):
     for base in ENDPOINTS:
         url = f'{base}?symbol={sym}&interval={tf}&limit={limit}'
         try:
-            r = requests.get(url, timeout=10)
+            r = requests.get(url, timeout=15)
             if r.status_code == 200:
                 return r.json()
         except:
