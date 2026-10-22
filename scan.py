@@ -62,17 +62,23 @@ def find_round_tp(price, is_bull):
     cap = price * 1.03 if is_bull else price * 0.97
     return min(raw, cap) if is_bull else max(raw, cap)
 
+ENDPOINTS = [
+    'https://fapi.binance.com/fapi/v1/klines',   # 合約API（GitHub Actions可用）
+    'https://api.binance.com/api/v3/klines',       # 現貨API（備用）
+    'https://api1.binance.com/api/v3/klines',
+    'https://api2.binance.com/api/v3/klines',
+    'https://api3.binance.com/api/v3/klines',
+]
+
 def fetch_klines(sym, tf, limit=1502):
-    url = f'https://api.binance.com/api/v3/klines?symbol={sym}&interval={tf}&limit={limit}'
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-        elif sym == 'BTCUSDT' and tf == '4h':
-            print(f'DEBUG fetch BTCUSDT 4h: status={r.status_code}, body={r.text[:200]}')
-    except Exception as e:
-        if sym == 'BTCUSDT' and tf == '4h':
-            print(f'DEBUG fetch BTCUSDT 4h exception: {e}')
+    for base in ENDPOINTS:
+        url = f'{base}?symbol={sym}&interval={tf}&limit={limit}'
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                return r.json()
+        except:
+            pass
     return None
 
 def calc_nwe(closes):
@@ -96,33 +102,15 @@ def scan_tf(tf):
 
     for sym in syms:
         raw = fetch_klines(sym, tf, 1502)
-        # debug fetch
-        if sym == 'TIAUSDT' and tf == '4h':
-            if raw is None:
-                print(f'DEBUG TIAUSDT 4h: fetch_klines returned None')
-            else:
-                print(f'DEBUG TIAUSDT 4h: fetched {len(raw)} bars')
         if not raw or len(raw) < 100:
             continue
 
         closes = [float(k[4]) for k in raw]
         sig_ts = raw[-2][6] / 1000  # 前一根K線收盤時間(秒)
 
-        # debug
-        if sym == 'TIAUSDT' and tf == '4h':
-            age = now_ts - sig_ts
-            print(f'DEBUG TIAUSDT 4h: now={now_ts}, sig_ts={sig_ts}, age={age}s, max_age={max_age}s, pass={age<=max_age}')
-
         # 時效過濾
         if now_ts - sig_ts > max_age:
             continue
-
-        # debug NWE
-        if sym == 'TIAUSDT' and tf == '4h':
-            src2 = closes[-1501:-1]
-            outs2, mae2 = calc_nwe(src2)
-            out2 = outs2[-1]
-            print(f'DEBUG TIAUSDT 4h NWE: out={out2:.6f}, mae={mae2:.6f}, upper={out2+mae2:.6f}, lower={out2-mae2:.6f}, prev_close={src2[-1]:.6f}, cur_close={closes[-1]:.6f}')
 
         src = closes[-1501:-1]
         n = len(src)
