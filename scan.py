@@ -68,8 +68,11 @@ def fetch_klines(sym, tf, limit=1502):
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
             return r.json()
-    except:
-        pass
+        elif sym == 'BTCUSDT' and tf == '4h':
+            print(f'DEBUG fetch BTCUSDT 4h: status={r.status_code}, body={r.text[:200]}')
+    except Exception as e:
+        if sym == 'BTCUSDT' and tf == '4h':
+            print(f'DEBUG fetch BTCUSDT 4h exception: {e}')
     return None
 
 def calc_nwe(closes):
@@ -93,6 +96,12 @@ def scan_tf(tf):
 
     for sym in syms:
         raw = fetch_klines(sym, tf, 1502)
+        # debug fetch
+        if sym == 'TIAUSDT' and tf == '4h':
+            if raw is None:
+                print(f'DEBUG TIAUSDT 4h: fetch_klines returned None')
+            else:
+                print(f'DEBUG TIAUSDT 4h: fetched {len(raw)} bars')
         if not raw or len(raw) < 100:
             continue
 
