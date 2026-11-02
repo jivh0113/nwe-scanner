@@ -57,14 +57,15 @@ SYMS_4H = [
 ]
 SYMS_MAP = {'15m': SYMS_15M, '30m': SYMS_30M, '1h': SYMS_1H, '4h': SYMS_4H}
 
-# 每個週期拉 1500 根（API 上限），實際覆蓋天數
-TF_DAYS = {'15m': 15, '30m': 31, '1h': 62, '4h': 250}
-# 回測用幾根（掃訊號的範圍，留 500 根給後續驗證）
-TF_SCAN = {'15m': 1000, '30m': 1000, '1h': 1000, '4h': 1000}
+# 30天所需根數
+TF_BARS_30D = {'15m': 2880, '30m': 1440, '1h': 720, '4h': 180}
+# 驗證需要額外 500 根，拉資料時加上
+TF_EXTRA    = 600  # NWE暖身100 + 驗證500
 
-def fetch_klines(sym, tf, limit=1500):
+def fetch_klines_endtime(sym, tf, end_ms, limit=1000):
+    """拉指定結束時間之前的K線"""
     for base in ENDPOINTS:
-        url = f'{base}?symbol={sym}&interval={tf}&limit={limit}'
+        url = f'{base}?symbol={sym}&interval={tf}&limit={limit}&endTime={end_ms}'
         try:
             r = requests.get(url, timeout=15)
             if r.status_code == 200:
@@ -72,6 +73,34 @@ def fetch_klines(sym, tf, limit=1500):
         except:
             pass
     return None
+
+def fetch_klines_30d(sym, tf):
+    """
+    拉足夠覆蓋30天的K線（含後續500根驗證）。
+    15m需要2880+600=3480根，分3批拉；其他一批搞定。
+    """
+    need = TF_BARS_30D[tf] + TF_EXTRA
+
+    if need <= 1000:
+        raw = fetch_klines_endtime(sym, tf, end_ms=int(time.time()*1000), limit=need)
+        return raw
+
+    # 需要分批：先拉最新 1000 根，再往前拉
+    all_raw = []
+    end_ms = int(time.time() * 1000)
+
+    while len(all_raw) < need:
+        batch = fetch_klines_endtime(sym, tf, end_ms=end_ms, limit=1000)
+        if not batch:
+            break
+        # 去掉最後一根（可能未收盤），往前接
+        all_raw = batch + all_raw
+        end_ms = int(batch[0][0]) - 1  # 往前推
+        if len(batch) < 1000:
+            break  # 沒有更多資料
+        time.sleep(0.1)
+
+    return all_raw if all_raw else None
 
 def find_round_tp(price, is_bull):
     mag = 10 ** (math.floor(math.log10(price)) - 1)
@@ -96,12 +125,14 @@ def calc_nwe_all(closes):
 
 def backtest_sym(closes_all, scan_bars):
     n = len(closes_all)
+    if n < scan_bars + 100:
+        return []
     uppers, lowers = calc_nwe_all(closes_all)
     results = []
 
-    # 掃最近 scan_bars 根，留 500 根給後續驗證
+    # 掃最近 scan_bars 根（30天），留後面的根做驗證
     scan_start = max(100, n - scan_bars - 500)
-    scan_end   = n - 500  # 最後 500 根用來驗證
+    scan_end   = n - 500
 
     for i in range(scan_start, scan_end):
         prev_close = closes_all[i - 1]
@@ -155,14 +186,15 @@ def main():
     tf_stats = {}
 
     for tf, syms in SYMS_MAP.items():
-        scan_bars = TF_SCAN[tf]
+        scan_bars = TF_BARS_30D[tf]
         wins_total = 0
         total_total = 0
-        print(f'=== {tf.upper()} ===')
+        print(f'=== {tf.upper()} (30天 = {scan_bars}根) ===')
 
         for sym in syms:
-            raw = fetch_klines(sym, tf, 1500)
-            if not raw or len(raw) < 600:
+            raw = fetch_klines_30d(sym, tf)
+            if not raw or len(raw) < scan_bars + 100:
+                print(f'  {sym.replace("USDT",""):10s}: 資料不足({len(raw) if raw else 0}根)')
                 continue
 
             closes = [float(k[4]) for k in raw]
@@ -186,13 +218,12 @@ def main():
     total_w = 0
     total_t = 0
     for tf, (w, t) in tf_stats.items():
-        days = TF_DAYS[tf]
         if t > 0:
-            lines.append(f'{tf.upper():4s} (~{days}天): {w}W / {t-w}L = {w/t*100:.1f}%  [{t}次]')
+            lines.append(f'{tf.upper():4s}: {w}W / {t-w}L = {w/t*100:.1f}%  [{t}次]')
             total_w += w
             total_t += t
         else:
-            lines.append(f'{tf.upper():4s} (~{days}天): 無訊號')
+            lines.append(f'{tf.upper():4s}: 無訊號')
 
     if total_t > 0:
         lines.append(f'\n總計: {total_w}W / {total_t-total_w}L = {total_w/total_t*100:.1f}%  [{total_t}次]')
