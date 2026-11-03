@@ -6240,6 +6240,16 @@ async function runTrendScan() {
 // 做多：前1根已收K收盤 < NWE下軌
 // 做空：前1根已收K收盤 > NWE上軌
 // ══════════════════════════════════════════
+// ══════════ NWE訊號標記 ══════════
+const NWE_BLACKLIST = new Set(['RVN','OP','ZRO','DOT','LINK','FET','MATIC']);
+function getSignalMarks(sym, tpPct) {
+  const blMark = NWE_BLACKLIST.has(sym) ? '🚫' : '';
+  let tpMark = '';
+  if (tpPct < 1.0) tpMark = '🏆';
+  else if (tpPct >= 2.0) tpMark = '⚠️';
+  return blMark + tpMark;
+}
+
 async function runLuxScan() {
   const btn1 = document.getElementById('luxBtn');
   const btn2 = document.getElementById('luxBtn2');
@@ -6341,7 +6351,10 @@ async function runLuxScan() {
       const tpsl = calcTPSL(tf, isBull, r.price, r.nweMid);
       const dirColor = tpsl.dir.includes('做多') ? '#059669' : '#dc2626';
       const conflict = conflictSyms && conflictSyms.has(r.sym);
-      const symLabel = conflict ? `${r.sym} <span style="color:#f59e0b;font-size:10px">⚠️</span>` : r.sym;
+      const remain_abs = Math.abs(remain);
+      const marks = getSignalMarks(r.sym, remain_abs);
+      const markSpan = marks ? `<span style="font-size:11px;margin-right:2px">${marks}</span>` : '';
+      const symLabel = conflict ? `${markSpan}${r.sym} <span style="color:#f59e0b;font-size:10px">⚠️</span>` : `${markSpan}${r.sym}`;
       const remain = isBull ? (tpsl.tp - r.price) / r.price * 100 : (r.price - tpsl.tp) / r.price * 100;
       const remainColor = remain < 0 ? '#dc2626' : remain < 1 ? '#f59e0b' : '#10b981';
       const remainStr = (remain >= 0 ? '+' : '') + remain.toFixed(1) + '%';
@@ -6550,7 +6563,12 @@ async function _tgNotify(tfResults) {
       const wrMap = tf==='1h'?(window._wrMap1h||{}):tf==='4h'?(window._wrMap4h||{}):tf==='15m'?(window._wrMap15m||{}):(window._wrMap30m||{});
       const wr = wrMap[r.sym+'USDT'];
       const wrStr = wr!=null ? `勝率: ${wr.toFixed(1)}%` : '';
-      msgs.push(`📡 NWE訊號 [${tf.toUpperCase()}]\n${r.sym} ${dir}\n進場: ${r.price}\nTP: ${tpsl.tp.toFixed(4)}  SL: ${tpsl.sl.toFixed(4)}\n${wrStr}`);
+      const tpRemain2 = isBull ? (tpsl.tp - r.price) / r.price * 100 : (r.price - tpsl.tp) / r.price * 100;
+      const marks2 = getSignalMarks(r.sym, Math.abs(tpRemain2));
+      const prefix2 = marks2 ? marks2 + ' ' : '';
+      const tpPct2 = (isBull ? '+' : '-') + Math.abs(tpRemain2).toFixed(1) + '%';
+      const lev2 = '+' + Math.round(Math.abs(tpRemain2)*12) + '%';
+      msgs.push(`📡 NWE訊號 [${tf.toUpperCase()}]\n${prefix2}${r.sym} ${dir}\n進場: ${r.price}\nTP: ${tpsl.tp.toFixed(4)}  (${tpPct2}  12x: ${lev2})\nSL: ${tpsl.sl.toFixed(4)}\n${wrStr}`);
     }
   }
   for (const msg of msgs) {
