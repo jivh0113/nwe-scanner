@@ -7391,10 +7391,7 @@ async function startAutoScan() {
 }
 
 // Auto-load BTC on start
-window.onload = () => {
-  loadData();
-  setTimeout(() => startAutoScan(), 3000);
-};
+window.onload = () => { loadData(); calcWinRates(); startAutoScan(); };
 </script>
 
 
