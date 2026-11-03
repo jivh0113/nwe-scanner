@@ -12,6 +12,9 @@ SL_PCT   = 0.08
 TF_MAX_BARS = {'15m': 5, '30m': 5, '1h': 5, '4h': 2}
 TF_MS       = {'15m': 15*60, '30m': 30*60, '1h': 60*60, '4h': 240*60}
 
+# 黑名單幣種（跨時框回測勝率偏低）
+BLACKLIST = {'RVN', 'OP', 'ZRO', 'DOT', 'LINK', 'FET', 'MATIC'}
+
 SYMS_15M = [
     'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
     'LTCUSDT','PYTHUSDT','UNIUSDT','FILUSDT','APTUSDT','ONDOUSDT','RSRUSDT','TIAUSDT',
@@ -128,6 +131,18 @@ def calc_winrate(closes_all, is_long):
         return None
     return wins / total * 100
 
+def get_signal_marks(sym, tp_pct):
+    """回傳訊號標記字串，可疊加"""
+    bl_mark = '🚫' if sym in BLACKLIST else ''
+    if tp_pct < 1.0:
+        tp_mark = '🏆'
+    elif tp_pct < 2.0:
+        tp_mark = ''
+    else:
+        tp_mark = '⚠️'
+    marks = bl_mark + tp_mark
+    return marks
+
 def scan_tf(tf):
     syms = SYMS_MAP[tf]
     signals = []
@@ -215,10 +230,12 @@ def main():
         return
 
     for s in all_signals:
+        marks = get_signal_marks(s['sym'], s['tp_pct'])
+        prefix = f"{marks} " if marks else ""
         wr_str = f"{s['winrate']:.1f}%" if s['winrate'] is not None else 'N/A'
         msg = (
             f"📡 NWE訊號 [{s['tf'].upper()}]\n"
-            f"{s['sym']} {s['direction']}\n"
+            f"{prefix}{s['sym']} {s['direction']}\n"
             f"進場: {s['price']}\n"
             f"TP: {s['tp']:.4f}  ({s['tp_pct']:+.1f}%  12x: {s['lev_pct']:+.0f}%)\n"
             f"SL: {s['sl']:.4f}\n"
