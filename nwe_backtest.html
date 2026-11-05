@@ -82,26 +82,32 @@ function gaussianKernel(x, h) {
 }
 
 function calcNWE(closes, h=8, mult=3.0) {
+  // Causal NWE: 每個點只用當前和過去的資料 (符合 TradingView NWE 行為)
   const n = closes.length;
   const mid=[], upper=[], lower=[];
   for(let i=0;i<n;i++){
     let wSum=0, ySum=0;
-    for(let j=0;j<n;j++){
-      const w=gaussianKernel(i-j,h);
-      wSum+=w; ySum+=w*closes[j];
+    // 只往回看，最多 h*3 根（kernel weight < 0.01 後可忽略）
+    const lookback = Math.min(i+1, Math.ceil(h*4));
+    for(let k=0; k<lookback; k++){
+      const j = i - k;
+      const w = gaussianKernel(k, h);
+      wSum += w;
+      ySum += w * closes[j];
     }
-    const est=ySum/wSum;
-    let varSum=0;
-    for(let j=0;j<n;j++){
-      const w=gaussianKernel(i-j,h);
-      varSum+=w*(closes[j]-est)**2;
+    const est = ySum / wSum;
+    let varSum = 0;
+    for(let k=0; k<lookback; k++){
+      const j = i - k;
+      const w = gaussianKernel(k, h);
+      varSum += w * (closes[j] - est) ** 2;
     }
-    const std=Math.sqrt(varSum/wSum);
+    const std = Math.sqrt(varSum / wSum);
     mid.push(est);
-    upper.push(est+mult*std);
-    lower.push(est-mult*std);
+    upper.push(est + mult * std);
+    lower.push(est - mult * std);
   }
-  return {mid,upper,lower};
+  return {mid, upper, lower};
 }
 
 async function fetchKlines(sym, interval, limit=200) {
