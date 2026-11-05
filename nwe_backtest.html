@@ -104,15 +104,21 @@ function calcNWE(closes, h=8, mult=3.0) {
   return {mid,upper,lower};
 }
 
-async function fetchKlines(sym, interval, limit=500) {
-  const base = `https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
+async function fetchKlines(sym, interval, limit=200) {
+  const fapiBase = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
+  const spotBase = `https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
+  const proxy = url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
   const urls = [
-    base,
-    `https://corsproxy.io/?${encodeURIComponent(base)}`,
+    fapiBase,
+    proxy(fapiBase),
+    spotBase,
+    proxy(spotBase),
   ];
+
   for(const url of urls){
     try{
-      const r = await fetch(url, {signal: AbortSignal.timeout(10000)});
+      const r = await fetch(url, {signal: AbortSignal.timeout(12000)});
       if(!r.ok) continue;
       const data = await r.json();
       if(!Array.isArray(data) || data.length<10) continue;
