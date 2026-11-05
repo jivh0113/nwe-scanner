@@ -954,6 +954,10 @@
     <div style="display:flex;align-items:center;gap:8px">
       <span id="nweStatus" style="font-size:11px;color:#0f766e;font-weight:600;font-family:'JetBrains Mono',monospace"></span>
       <span id="nweCountdown" style="font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-right:4px"></span>
+      <div style="display:flex;align-items:center;gap:6px;background:#e2e8f0;border-radius:5px;padding:2px">
+        <button id="nweModeAll" onclick="setNweMode('all')" style="font-size:11px;padding:3px 10px;border:none;border-radius:3px;background:#0f766e;color:#fff;cursor:pointer;font-weight:600">全量</button>
+        <button id="nweModeSelect" onclick="setNweMode('select')" style="font-size:11px;padding:3px 10px;border:none;border-radius:3px;background:transparent;color:#64748b;cursor:pointer;font-weight:600">⭐ 精選</button>
+      </div>
       <button onclick="runLuxScan()" id="luxBtn2" style="font-size:11px;padding:4px 14px;border:none;border-radius:4px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;cursor:pointer;font-weight:600">🔍 開始掃描</button>
     </div>
   </div>
@@ -6236,6 +6240,21 @@ async function runTrendScan() {
   btn.disabled=false; btn.textContent='📈 趨勢掃描';
 }
 // ══════════════════════════════════════════
+// NWE精選模式
+window._nweMode = 'all';
+function setNweMode(mode) {
+  window._nweMode = mode;
+  const btnAll = document.getElementById('nweModeAll');
+  const btnSel = document.getElementById('nweModeSelect');
+  if (mode === 'all') {
+    if(btnAll){ btnAll.style.background='#0f766e'; btnAll.style.color='#fff'; }
+    if(btnSel){ btnSel.style.background='transparent'; btnSel.style.color='#64748b'; }
+  } else {
+    if(btnSel){ btnSel.style.background='#d97706'; btnSel.style.color='#fff'; }
+    if(btnAll){ btnAll.style.background='transparent'; btnAll.style.color='#64748b'; }
+  }
+}
+
 // NWE掃描：v4 訊號，4時框（15m/30m/1h/4h）
 // 做多：前1根已收K收盤 < NWE下軌
 // 做空：前1根已收K收盤 > NWE上軌
@@ -6301,6 +6320,19 @@ async function runLuxScan() {
     'MOVEUSDT','ORDIUSDT','ARUSDT','GALAUSDT','MATICUSDT','FETUSDT','RENDERUSDT',
     'APEUSDT','GMTUSDT','FLOWUSDT','EGLDUSDT','VETUSDT','ZILUSDT','RVNUSDT','CHZUSDT'
   ]; // 61幣（排除AAVEUSDT 75.0%、TRXUSDT）
+
+  // ⭐ 精選清單（NWE回測20x SL5%勝率≥90%）
+  const SYMS_SELECT_15M = ['BTCUSDT','BNBUSDT','FILUSDT','MKRUSDT','VETUSDT','SUIUSDT','ETCUSDT','AVAXUSDT','UNIUSDT','PYTHUSDT'];
+  const SYMS_SELECT_30M = ['BNBUSDT','BTCUSDT','LTCUSDT','AVAXUSDT','BCHUSDT','NEARUSDT','MKRUSDT'];
+  const SYMS_SELECT_1H  = ['BNBUSDT','VETUSDT','ETCUSDT','LTCUSDT','PENGUUSDT','MKRUSDT','WLDUSDT','PYTHUSDT','VIRTUALUSDT','NEARUSDT','JTOUSDT'];
+  const SYMS_SELECT_4H  = ['LDOUSDT','XMRUSDT','VIRTUALUSDT'];
+
+  // 根據模式選清單
+  const _nweMode = window._nweMode || 'all';
+  const tf15m = _nweMode==='select' ? SYMS_SELECT_15M : SYMS_15M;
+  const tf30m = _nweMode==='select' ? SYMS_SELECT_30M : SYMS_30M;
+  const tf1h  = _nweMode==='select' ? SYMS_SELECT_1H  : SYMS_1H;
+  const tf4h  = _nweMode==='select' ? SYMS_SELECT_4H  : SYMS_4H;
 
   const fmtL = n => Math.abs(n)>=1000 ? n.toLocaleString(undefined,{maximumFractionDigits:2})
     : Math.abs(n)>=1 ? n.toFixed(4) : n.toFixed(6);
@@ -6413,7 +6445,7 @@ async function runLuxScan() {
     let done=0;
 
     // 依TF選對應幣種清單
-    const syms = tf === '4h' ? SYMS_4H : tf === '15m' ? SYMS_15M : tf === '30m' ? SYMS_30M : SYMS_1H;
+    const syms = tf === '4h' ? tf4h : tf === '15m' ? tf15m : tf === '30m' ? tf30m : tf1h;
 
     for (let i=0; i<syms.length; i+=BATCH) {
       const batch = syms.slice(i, i+BATCH);
