@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>NWE 回測 20x SL5%</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:monospace;padding:16px}
+h1{font-size:18px;color:#38bdf8;margin-bottom:12px}
+.params{background:#1e293b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#94a3b8}
+.params span{color:#f8fafc;font-weight:bold}
+#progress{background:#1e293b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
+#bar-wrap{background:#0f172a;border-radius:4px;height:8px;margin-top:6px}
+#bar{background:#38bdf8;height:8px;border-radius:4px;width:0%;transition:width 0.2s}
+#status{color:#94a3b8;margin-top:4px;font-size:12px}
+.tf-section{margin-bottom:20px}
+.tf-title{font-size:14px;color:#fbbf24;margin-bottom:8px;padding:4px 8px;background:#1e293b;border-radius:4px;display:inline-block}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#1e293b;color:#94a3b8;padding:6px 8px;text-align:right;font-weight:normal;position:sticky;top:0}
+th:first-child,th:nth-child(2){text-align:left}
+tr:hover{background:#1e293b}
+td{padding:5px 8px;border-bottom:1px solid #1e293b;text-align:right}
+td:first-child,td:nth-child(2){text-align:left}
+.win-high{color:#4ade80}
+.win-mid{color:#fbbf24}
+.win-low{color:#f87171}
+.pnl-pos{color:#4ade80}
+.pnl-neg{color:#f87171}
+.bl{color:#f87171}
+.trophy{color:#fbbf24}
+.warn{color:#f87171}
+#start-btn{background:#0ea5e9;color:#fff;border:none;padding:10px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-family:monospace}
+#start-btn:hover{background:#38bdf8}
+#start-btn:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+#result{margin-top:16px}
+.summary{background:#1e293b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;display:flex;gap:24px;flex-wrap:wrap}
+.summary-item{display:flex;flex-direction:column;gap:2px}
+.summary-item .label{color:#64748b;font-size:11px}
+.summary-item .val{color:#f8fafc;font-size:16px;font-weight:bold}
+</style>
+</head>
+<body>
+<h1>📊 NWE 回測｜20x 槓桿 SL 5%</h1>
+<div class="params">
+  參數：槓桿 <span>20x</span>　止損 <span>5%</span>　NWE H=<span>8</span> Mult=<span>3</span>　每幣拉 <span>500</span> 根K線
+</div>
+<button id="start-btn" onclick="startBacktest()">▶ 開始回測</button>
+<div id="progress" style="display:none">
+  <div id="status">準備中...</div>
+  <div id="bar-wrap"><div id="bar"></div></div>
+</div>
+<div id="result"></div>
+
+<script>
+const LEVERAGE = 20;
+const SL_PCT = 0.05;
+const NWE_H = 8;
+const NWE_MULT = 3.0;
+const BLACKLIST = new Set(['RVN','OP','ZRO','DOT','LINK','FET','MATIC']);
+
+const SYMBOLS = [
+  'BTC','ETH','BNB','SOL','XRP','ADA','AVAX','DOGE','TRX',
+  'UNI','LTC','BCH','ATOM','FIL','APT','ARB','INJ','SUI','SEI',
+  'TIA','WIF','PEPE','FLOKI','BONK','ORDI','NEIRO','GOAT','PNUT',
+  'ACT','TURBO','MEW','POPCAT','BRETT','EIGEN','RENDER','ETHFI',
+  'STRK','MANTA','JTO','BEAM','BLUR','MAGIC','ANKR','CHZ','SAND',
+  'MANA','AXS','GMT','ROSE','NEAR','FTM','HBAR','VET','THETA',
+  'IOTA','EGLD','KSM','KAVA','GRT','AAVE','COMP','MKR','SNX',
+  'YFI','SUSHI','RUNE','HYPE','OP','DOT','LINK','FET','RVN','ZRO',
+];
+
+const TIMEFRAMES = [
+  {name:'15m', interval:'15m'},
+  {name:'30m', interval:'30m'},
+  {name:'1h',  interval:'1h'},
+  {name:'4h',  interval:'4h'},
+];
+
+function gaussianKernel(x, h) {
+  return Math.exp(-0.5 * (x/h) ** 2);
+}
+
+function calcNWE(closes, h=8, mult=3.0) {
+  const n = closes.length;
+  const mid=[], upper=[], lower=[];
+  for(let i=0;i<n;i++){
+    let wSum=0, ySum=0;
+    for(let j=0;j<n;j++){
+      const w=gaussianKernel(i-j,h);
+      wSum+=w; ySum+=w*closes[j];
+    }
+    const est=ySum/wSum;
+    let varSum=0;
+    for(let j=0;j<n;j++){
+      const w=gaussianKernel(i-j,h);
+      varSum+=w*(closes[j]-est)**2;
+    }
+    const std=Math.sqrt(varSum/wSum);
+    mid.push(est);
+    upper.push(est+mult*std);
+    lower.push(est-mult*std);
+  }
+  return {mid,upper,lower};
+}
+
+async function fetchKlines(sym, interval, limit=500) {
+  const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
+  const r = await fetch(url);
+  if(!r.ok) return null;
+  const data = await r.json();
+  if(!Array.isArray(data)) return null;
+  return {
+    opens:  data.map(x=>parseFloat(x[1])),
+    highs:  data.map(x=>parseFloat(x[2])),
+    lows:   data.map(x=>parseFloat(x[3])),
+    closes: data.map(x=>parseFloat(x[4])),
+    times:  data.map(x=>x[0]),
+  };
+}
+
+function backtestOne(sym, tfName, klines) {
+  const {opens,highs,lows,closes} = klines;
+  const n = closes.length;
+  if(n < 50) return null;
+
+  const {mid,upper,lower} = calcNWE(closes, NWE_H, NWE_MULT);
+  const trades = [];
+
+  for(let i=1; i<n-1; i++){
+    const prevC=closes[i-1], currC=closes[i];
+    const prevLo=lower[i-1], currLo=lower[i];
+    const prevUp=upper[i-1], currUp=upper[i];
+    let dir=null;
+
+    if(prevC<prevLo && currC>=currLo) dir='long';
+    else if(prevC>prevUp && currC<=currUp) dir='short';
+    if(!dir) continue;
+
+    const entry=opens[i+1];
+    if(!entry||entry<=0) continue;
+    const slPrice = dir==='long' ? entry*(1-SL_PCT) : entry*(1+SL_PCT);
+    let result=null;
+
+    for(let k=i+1; k<Math.min(i+60,n); k++){
+      const h=highs[k], l=lows[k];
+      if(dir==='long'){
+        if(l<=slPrice){ result=-SL_PCT*LEVERAGE; break; }
+        if(h>=upper[k]){ result=(upper[k]-entry)/entry*LEVERAGE; break; }
+      } else {
+        if(h>=slPrice){ result=-SL_PCT*LEVERAGE; break; }
+        if(l<=lower[k]){ result=(entry-lower[k])/entry*LEVERAGE; break; }
+      }
+    }
+    if(result!==null){
+      trades.push({dir, entry, pnl:result, win:result>0});
+    }
+    i++;
+  }
+
+  if(trades.length<3) return null;
+  const wins=trades.filter(t=>t.win).length;
+  const total=trades.length;
+  const winRate=wins/total*100;
+  const totalPnl=trades.reduce((s,t)=>s+t.pnl,0);
+  const winTrades=trades.filter(t=>t.win);
+  const avgTpPct=winTrades.length>0
+    ? winTrades.reduce((s,t)=>s+t.pnl/LEVERAGE*100,0)/winTrades.length
+    : 0;
+
+  return {sym, tf:tfName, trades:total, wins, winRate, totalPnl, avgTpPct, blacklisted:BLACKLIST.has(sym)};
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function startBacktest(){
+  document.getElementById('start-btn').disabled=true;
+  document.getElementById('progress').style.display='block';
+  document.getElementById('result').innerHTML='';
+
+  const total=SYMBOLS.length*TIMEFRAMES.length;
+  let done=0;
+  const allResults=[];
+
+  for(const tf of TIMEFRAMES){
+    for(const sym of SYMBOLS){
+      done++;
+      document.getElementById('status').textContent=`掃描中 ${done}/${total}：${sym} ${tf.name}`;
+      document.getElementById('bar').style.width=(done/total*100)+'%';
+
+      try{
+        const klines=await fetchKlines(sym,tf.interval,500);
+        if(klines){
+          const res=backtestOne(sym,tf.name,klines);
+          if(res) allResults.push(res);
+        }
+      }catch(e){}
+
+      await sleep(80);
+    }
+  }
+
+  document.getElementById('status').textContent=`完成！共 ${allResults.length} 筆結果`;
+  document.getElementById('bar').style.width='100%';
+  renderResult(allResults);
+}
+
+function renderResult(results){
+  results.sort((a,b)=>b.winRate-a.winRate);
+
+  // 各時框統計
+  const tfStats={};
+  for(const r of results){
+    if(!tfStats[r.tf]) tfStats[r.tf]={sum:0,cnt:0};
+    tfStats[r.tf].sum+=r.winRate;
+    tfStats[r.tf].cnt++;
+  }
+
+  let html='<div class="summary">';
+  for(const tf of TIMEFRAMES){
+    const s=tfStats[tf.name];
+    if(s) html+=`<div class="summary-item"><div class="label">${tf.name} 平均勝率</div><div class="val">${(s.sum/s.cnt).toFixed(1)}%</div></div>`;
+  }
+  html+=`<div class="summary-item"><div class="label">總信號數</div><div class="val">${results.reduce((s,r)=>s+r.trades,0)}</div></div>`;
+  html+='</div>';
+
+  // 各時框分表
+  for(const tf of TIMEFRAMES){
+    const tfRes=results.filter(r=>r.tf===tf.name);
+    if(!tfRes.length) continue;
+    html+=`<div class="tf-section">`;
+    html+=`<div class="tf-title">【${tf.name}】${tfRes.length} 幣有效</div>`;
+    html+=`<table><tr>
+      <th>#</th><th>幣種</th><th>勝率</th><th>次數</th>
+      <th>平均TP%</th><th>總損益(x)</th>
+    </tr>`;
+    tfRes.forEach((r,i)=>{
+      const wrClass=r.winRate>=60?'win-high':r.winRate>=45?'win-mid':'win-low';
+      const pnlClass=r.totalPnl>=0?'pnl-pos':'pnl-neg';
+      const bl=r.blacklisted?'<span class="bl">🚫</span>':'';
+      const mark=r.avgTpPct<1?'<span class="trophy">🏆</span>':r.avgTpPct>=2?'<span class="warn">⚠️</span>':'';
+      html+=`<tr>
+        <td>${i+1}</td>
+        <td>${bl}${mark}${r.sym}</td>
+        <td class="${wrClass}">${r.winRate.toFixed(1)}%</td>
+        <td>${r.trades}</td>
+        <td>${r.avgTpPct.toFixed(2)}%</td>
+        <td class="${pnlClass}">${r.totalPnl.toFixed(2)}</td>
+      </tr>`;
+    });
+    html+='</table></div>';
+  }
+
+  document.getElementById('result').innerHTML=html;
+  document.getElementById('start-btn').disabled=false;
+}
+</script>
+</body>
+</html>
