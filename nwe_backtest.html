@@ -189,23 +189,24 @@ async function startBacktest(){
   const total=SYMBOLS.length*TIMEFRAMES.length;
   let done=0;
   const allResults=[];
+  let fetchOk=0, fetchFail=0;
 
   for(const tf of TIMEFRAMES){
     for(const sym of SYMBOLS){
       done++;
-      document.getElementById('status').textContent=`掃描中 ${done}/${total}：${sym} ${tf.name}`;
+      document.getElementById('status').textContent=`掃描中 ${done}/${total}：${sym} ${tf.name} ✅${fetchOk} ❌${fetchFail}`;
       document.getElementById('bar').style.width=(done/total*100)+'%';
 
       try{
         const klines=await fetchKlines(sym,tf.interval,500);
-        if(klines){
-          const res=backtestOne(sym,tf.name,klines);
-          if(res) allResults.push(res);
-        }
-      }catch(e){}
+        if(klines){ fetchOk++; const res=backtestOne(sym,tf.name,klines); if(res) allResults.push(res); }
+        else fetchFail++;
+      }catch(e){ fetchFail++; }
 
       await sleep(80);
     }
+    // 跑完一個時框先顯示
+    if(allResults.length>0) renderResult([...allResults]);
   }
 
   document.getElementById('status').textContent=`完成！共 ${allResults.length} 筆結果`;
