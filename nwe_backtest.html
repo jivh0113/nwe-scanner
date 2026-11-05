@@ -42,7 +42,7 @@ td:first-child,td:nth-child(2){text-align:left}
 <body>
 <h1>📊 NWE 回測｜20x 槓桿 SL 5%</h1>
 <div class="params">
-  參數：槓桿 <span>20x</span>　止損 <span>5%</span>　NWE H=<span>8</span> Mult=<span>3</span>　每幣拉 <span>500</span> 根K線
+  參數：槓桿 <span>20x</span>　止損 <span>5%</span>　NWE H=<span>8</span> Mult=<span>3</span>　每幣拉 <span>500</span> 根K線　訊號：close 觸 band
 </div>
 <button id="start-btn" onclick="startBacktest()">▶ 開始回測</button>
 <div id="progress" style="display:none">
@@ -78,29 +78,27 @@ const TIMEFRAMES = [
 ];
 
 function gaussianKernel(x, h) {
-  return Math.exp(-0.5 * (x/h) ** 2);
+  return Math.exp(-0.5 * (x/h) * (x/h));
 }
 
+// Symmetric NWE（和 TradingView 一致）
+// 每個點用「它附近的所有資料點」做 gaussian 加權平均
+// 這樣 band 比 causal NWE 更窄，能產生有意義的訊號
 function calcNWE(closes, h=8, mult=3.0) {
-  // Causal NWE: 每個點只用當前和過去的資料 (符合 TradingView NWE 行為)
   const n = closes.length;
   const mid=[], upper=[], lower=[];
-  for(let i=0;i<n;i++){
+  for(let i=0; i<n; i++){
     let wSum=0, ySum=0;
-    // 只往回看，最多 h*3 根（kernel weight < 0.01 後可忽略）
-    const lookback = Math.min(i+1, Math.ceil(h*4));
-    for(let k=0; k<lookback; k++){
-      const j = i - k;
-      const w = gaussianKernel(k, h);
+    for(let j=0; j<n; j++){
+      const w = gaussianKernel(i - j, h);
       wSum += w;
       ySum += w * closes[j];
     }
     const est = ySum / wSum;
     let varSum = 0;
-    for(let k=0; k<lookback; k++){
-      const j = i - k;
-      const w = gaussianKernel(k, h);
-      varSum += w * (closes[j] - est) ** 2;
+    for(let j=0; j<n; j++){
+      const w = gaussianKernel(i - j, h);
+      varSum += w * (closes[j] - est) * (closes[j] - est);
     }
     const std = Math.sqrt(varSum / wSum);
     mid.push(est);
@@ -110,7 +108,7 @@ function calcNWE(closes, h=8, mult=3.0) {
   return {mid, upper, lower};
 }
 
-async function fetchKlines(sym, interval, limit=200) {
+async function fetchKlines(sym, interval, limit=500) {
   const fapiBase = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
   const spotBase = `https://api.binance.com/api/v3/klines?symbol=${sym}USDT&interval=${interval}&limit=${limit}`;
   const proxy = url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
@@ -141,52 +139,61 @@ async function fetchKlines(sym, interval, limit=200) {
 }
 
 function backtestOne(sym, tfName, klines) {
-  const {opens,highs,lows,closes} = klines;
+  const {opens, highs, lows, closes} = klines;
   const n = closes.length;
   if(n < 50) return null;
 
-  const {mid,upper,lower} = calcNWE(closes, NWE_H, NWE_MULT);
+  const {mid, upper, lower} = calcNWE(closes, NWE_H, NWE_MULT);
+
   const trades = [];
 
+  // 訊號：close 觸碰 band（close <= lower 或 close >= upper）
+  // 下一根開盤進場
   for(let i=1; i<n-1; i++){
-    const prevC=closes[i-1], currC=closes[i];
-    const prevLo=lower[i-1], currLo=lower[i];
-    const prevUp=upper[i-1], currUp=upper[i];
-    let dir=null;
+    const c = closes[i];
+    const prevC = closes[i-1];
+    let dir = null;
 
-    if(prevC<prevLo && currC>=currLo) dir='long';
-    else if(prevC>prevUp && currC<=currUp) dir='short';
+    // 多單：前根 close > lower，當根 close <= lower（觸下軌）
+    if(prevC > lower[i-1] && c <= lower[i]) dir = 'long';
+    // 空單：前根 close < upper，當根 close >= upper（觸上軌）
+    else if(prevC < upper[i-1] && c >= upper[i]) dir = 'short';
+
     if(!dir) continue;
 
-    const entry=opens[i+1];
-    if(!entry||entry<=0) continue;
-    const slPrice = dir==='long' ? entry*(1-SL_PCT) : entry*(1+SL_PCT);
-    let result=null;
+    const entry = opens[i+1];
+    if(!entry || entry <= 0) continue;
 
-    for(let k=i+1; k<Math.min(i+60,n); k++){
-      const h=highs[k], l=lows[k];
-      if(dir==='long'){
-        if(l<=slPrice){ result=-SL_PCT*LEVERAGE; break; }
-        if(h>=upper[k]){ result=(upper[k]-entry)/entry*LEVERAGE; break; }
+    const slPrice = dir==='long' ? entry*(1-SL_PCT) : entry*(1+SL_PCT);
+    let result = null;
+
+    // 往後 60 根找出場
+    for(let k=i+1; k<Math.min(i+61, n); k++){
+      const h2 = highs[k], l2 = lows[k];
+      if(dir === 'long'){
+        if(l2 <= slPrice){ result = -SL_PCT * LEVERAGE; break; }
+        if(h2 >= upper[k]){ result = (upper[k] - entry) / entry * LEVERAGE; break; }
       } else {
-        if(h>=slPrice){ result=-SL_PCT*LEVERAGE; break; }
-        if(l<=lower[k]){ result=(entry-lower[k])/entry*LEVERAGE; break; }
+        if(h2 >= slPrice){ result = -SL_PCT * LEVERAGE; break; }
+        if(l2 <= lower[k]){ result = (entry - lower[k]) / entry * LEVERAGE; break; }
       }
     }
-    if(result!==null){
-      trades.push({dir, entry, pnl:result, win:result>0});
+
+    if(result !== null){
+      trades.push({dir, entry, pnl: result, win: result > 0});
     }
-    i++;
+    i++; // 跳過進場K線，避免重疊
   }
 
-  if(trades.length<MIN_TRADES) return null;
-  const wins=trades.filter(t=>t.win).length;
-  const total=trades.length;
-  const winRate=wins/total*100;
-  const totalPnl=trades.reduce((s,t)=>s+t.pnl,0);
-  const winTrades=trades.filter(t=>t.win);
-  const avgTpPct=winTrades.length>0
-    ? winTrades.reduce((s,t)=>s+t.pnl/LEVERAGE*100,0)/winTrades.length
+  if(trades.length < MIN_TRADES) return null;
+
+  const wins = trades.filter(t=>t.win).length;
+  const total = trades.length;
+  const winRate = wins / total * 100;
+  const totalPnl = trades.reduce((s,t)=>s+t.pnl, 0);
+  const winTrades = trades.filter(t=>t.win);
+  const avgTpPct = winTrades.length > 0
+    ? winTrades.reduce((s,t)=>s + t.pnl/LEVERAGE*100, 0) / winTrades.length
     : 0;
 
   return {sym, tf:tfName, trades:total, wins, winRate, totalPnl, avgTpPct, blacklisted:BLACKLIST.has(sym)};
@@ -195,91 +202,111 @@ function backtestOne(sym, tfName, klines) {
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 async function startBacktest(){
-  document.getElementById('start-btn').disabled=true;
-  document.getElementById('progress').style.display='block';
-  document.getElementById('result').innerHTML='';
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('progress').style.display = 'block';
+  document.getElementById('result').innerHTML = '';
 
-  const total=SYMBOLS.length*TIMEFRAMES.length;
-  let done=0;
-  const allResults=[];
-  let fetchOk=0, fetchFail=0;
+  const total = SYMBOLS.length * TIMEFRAMES.length;
+  let done = 0;
+  const allResults = [];
+  let fetchOk = 0, fetchFail = 0;
 
   for(const tf of TIMEFRAMES){
     for(const sym of SYMBOLS){
       done++;
-      document.getElementById('status').textContent=`掃描中 ${done}/${total}：${sym} ${tf.name} ✅${fetchOk} ❌${fetchFail}`;
-      document.getElementById('bar').style.width=(done/total*100)+'%';
+      document.getElementById('status').textContent =
+        `掃描中 ${done}/${total}：${sym} ${tf.name}`;
+      document.getElementById('bar').style.width =
+        (done/total*100).toFixed(1)+'%';
 
       try{
-        const klines=await fetchKlines(sym,tf.interval,200);
+        const klines = await fetchKlines(sym, tf.interval, 500);
         if(klines){
           fetchOk++;
-          await sleep(0); // yield to UI
-          const res=backtestOne(sym,tf.name,klines);
-          console.log(sym,tf.name,'trades:',(res?res.trades:0),'klines:',klines.closes.length);
-          if(res) allResults.push(res);
-        } else { fetchFail++; console.warn('fetch fail',sym,tf.name); }
-      }catch(e){ fetchFail++; console.error(sym,tf.name,e); }
+          const r = backtestOne(sym, tf.name, klines);
+          if(r) allResults.push(r);
+        } else {
+          fetchFail++;
+        }
+      }catch(e){
+        fetchFail++;
+      }
 
-      await sleep(80);
+      if(done % 5 === 0) await sleep(50);
     }
-    // 跑完一個時框先顯示
-    if(allResults.length>0) renderResult([...allResults]);
   }
 
-  document.getElementById('status').textContent=`完成！共 ${allResults.length} 筆結果`;
-  document.getElementById('bar').style.width='100%';
-  renderResult(allResults);
+  renderResult(allResults, fetchOk, fetchFail);
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('status').textContent =
+    `✅ 完成！成功拉取 ${fetchOk} 個，失敗 ${fetchFail} 個`;
 }
 
-function renderResult(results){
-  results.sort((a,b)=>b.winRate-a.winRate);
+function renderResult(results, fetchOk, fetchFail){
+  if(results.length === 0){
+    document.getElementById('result').innerHTML =
+      `<div style="color:#f87171;padding:16px">沒有找到有效結果（fetchOk=${fetchOk}, fetchFail=${fetchFail}）</div>`;
+    return;
+  }
 
-  // 各時框統計
-  const tfStats={};
+  // 按勝率排序
+  results.sort((a,b)=> b.winRate - a.winRate || b.trades - a.trades);
+
+  const tfGroups = {};
+  for(const tf of TIMEFRAMES) tfGroups[tf.name] = [];
   for(const r of results){
-    if(!tfStats[r.tf]) tfStats[r.tf]={sum:0,cnt:0};
-    tfStats[r.tf].sum+=r.winRate;
-    tfStats[r.tf].cnt++;
+    if(tfGroups[r.tf]) tfGroups[r.tf].push(r);
   }
 
-  let html='<div class="summary">';
-  for(const tf of TIMEFRAMES){
-    const s=tfStats[tf.name];
-    if(s) html+=`<div class="summary-item"><div class="label">${tf.name} 平均勝率</div><div class="val">${(s.sum/s.cnt).toFixed(1)}%</div></div>`;
-  }
-  html+=`<div class="summary-item"><div class="label">總信號數</div><div class="val">${results.reduce((s,r)=>s+r.trades,0)}</div></div>`;
-  html+='</div>';
+  const totalTrades = results.reduce((s,r)=>s+r.trades,0);
+  const totalWins   = results.reduce((s,r)=>s+r.wins,0);
+  const avgWR       = results.length > 0 ? results.reduce((s,r)=>s+r.winRate,0)/results.length : 0;
 
-  // 各時框分表
+  let html = `
+  <div class="summary">
+    <div class="summary-item"><div class="label">有效組合</div><div class="val">${results.length}</div></div>
+    <div class="summary-item"><div class="label">總交易次數</div><div class="val">${totalTrades}</div></div>
+    <div class="summary-item"><div class="label">平均勝率</div><div class="val">${avgWR.toFixed(1)}%</div></div>
+    <div class="summary-item"><div class="label">資料拉取</div><div class="val">${fetchOk}✓ ${fetchFail}✗</div></div>
+  </div>`;
+
   for(const tf of TIMEFRAMES){
-    const tfRes=results.filter(r=>r.tf===tf.name);
-    if(!tfRes.length) continue;
-    html+=`<div class="tf-section">`;
-    html+=`<div class="tf-title">【${tf.name}】${tfRes.length} 幣有效</div>`;
-    html+=`<table><tr>
-      <th>#</th><th>幣種</th><th>勝率</th><th>次數</th>
+    const rows = tfGroups[tf.name];
+    if(rows.length === 0) continue;
+    const tfAvgWR = rows.reduce((s,r)=>s+r.winRate,0)/rows.length;
+
+    html += `<div class="tf-section">
+    <div class="tf-title">⏱ ${tf.name}　平均勝率 ${tfAvgWR.toFixed(1)}%　共 ${rows.length} 組</div>
+    <table>
+    <thead><tr>
+      <th>幣種</th><th>標記</th>
+      <th>勝率</th><th>次數</th><th>贏</th>
       <th>平均TP%</th><th>總損益(x)</th>
-    </tr>`;
-    tfRes.forEach((r,i)=>{
-      const wrClass=r.winRate>=60?'win-high':r.winRate>=45?'win-mid':'win-low';
-      const pnlClass=r.totalPnl>=0?'pnl-pos':'pnl-neg';
-      const bl=r.blacklisted?'<span class="bl">🚫</span>':'';
-      const mark=r.avgTpPct<1?'<span class="trophy">🏆</span>':r.avgTpPct>=2?'<span class="warn">⚠️</span>':'';
-      html+=`<tr>
-        <td>${i+1}</td>
-        <td>${bl}${mark}${r.sym}</td>
-        <td class="${wrClass}">${r.winRate.toFixed(1)}%</td>
+    </tr></thead><tbody>`;
+
+    for(const r of rows){
+      const wrCls = r.winRate>=60?'win-high':r.winRate>=45?'win-mid':'win-low';
+      const pnlCls = r.totalPnl>=0?'pnl-pos':'pnl-neg';
+      let mark = '';
+      if(r.blacklisted) mark += '🚫';
+      if(r.avgTpPct < 1.0) mark += '🏆';
+      else if(r.avgTpPct >= 2.0) mark += '⚠️';
+
+      const symCls = r.blacklisted ? ' class="bl"' : '';
+      html += `<tr>
+        <td${symCls}>${r.sym}</td>
+        <td>${mark}</td>
+        <td class="${wrCls}">${r.winRate.toFixed(1)}%</td>
         <td>${r.trades}</td>
+        <td>${r.wins}</td>
         <td>${r.avgTpPct.toFixed(2)}%</td>
-        <td class="${pnlClass}">${r.totalPnl.toFixed(2)}</td>
+        <td class="${pnlCls}">${r.totalPnl>=0?'+':''}${r.totalPnl.toFixed(2)}x</td>
       </tr>`;
-    });
-    html+='</table></div>';
+    }
+    html += '</tbody></table></div>';
   }
 
-  document.getElementById('result').innerHTML=html;
-  document.getElementById('start-btn').disabled=false;
+  document.getElementById('result').innerHTML = html;
 }
 </script>
 </body>
