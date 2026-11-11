@@ -6577,6 +6577,10 @@ async function runLuxScan() {
   if(btn1) { btn1.disabled=false; btn1.textContent='📡 NWE掃描'; }
   if(btn2) { btn2.disabled=false; btn2.textContent='🔍 開始掃描'; }
 
+  // 掃描完後算當前 tab 的勝率（若未算過）
+  const _curTab = window._currentNweTab || '15m';
+  if (!window['_wrReady' + _curTab]) calcWinRates(_curTab);
+
   // Telegram推播
   _tgNotify(tfResults);
 }
@@ -6672,6 +6676,8 @@ function switchNweTab(tf) {
     if(t===tf){ btn.style.background='#0f766e'; btn.style.color='#fff'; btn.style.fontWeight='600'; }
     else       { btn.style.background='transparent'; btn.style.color='#64748b'; btn.style.fontWeight=''; }
   });
+  window._currentNweTab = tf;
+  if (!window['_wrReady' + tf]) calcWinRates(tf);
 }
 
 // ══════════ 異動監控 ══════════
@@ -7263,8 +7269,20 @@ async function runStrengthScan() {
 // ══════════════════════════════════════════
 // 背景計算各幣勝率（NWE SL=8% 整數關口TP）
 // ══════════════════════════════════════════
-async function calcWinRates() {
+async function calcWinRates(tf) {
+  if (!tf) tf = '15m';
+  if (window['_wrReady' + tf]) return;  // 已算過，跳過
   const _H = 8, _MULT = 3, _SL_PCT = 0.08;
+  const SYMS_5M = [
+    'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
+    'LTCUSDT','PYTHUSDT','UNIUSDT','FILUSDT','APTUSDT','ONDOUSDT','RSRUSDT','TIAUSDT',
+    'AVAXUSDT','INJUSDT','STXUSDT','BCHUSDT','AAVEUSDT','SUIUSDT','TAOUSDT','TRUMPUSDT',
+    'PENGUUSDT','HYPEUSDT','JTOUSDT','VIRTUALUSDT','DASHUSDT','JUPUSDT','XLMUSDT',
+    'ETCUSDT','LDOUSDT','CRVUSDT','SANDUSDT','POLUSDT','KAIAUSDT','CFXUSDT','ICPUSDT',
+    'ADAUSDT','DOTUSDT','LINKUSDT','OPUSDT','MKRUSDT','WIFUSDT','TONUSDT','EIGENUSDT',
+    'MOVEUSDT','ORDIUSDT','ARUSDT','GALAUSDT','MATICUSDT','FETUSDT','RENDERUSDT',
+    'APEUSDT','GMTUSDT','FLOWUSDT','EGLDUSDT','VETUSDT','ZILUSDT','RVNUSDT','CHZUSDT'
+  ];
   const SYMS_1H = [
     'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
     'LTCUSDT','PYTHUSDT','UNIUSDT','FILUSDT','APTUSDT','ONDOUSDT','RSRUSDT','TIAUSDT',
@@ -7313,7 +7331,7 @@ async function calcWinRates() {
   }
 
   async function _btSym(sym, tf) {
-    const MAX_BARS = {'15m':48,'30m':24,'1h':36,'4h':21};
+    const MAX_BARS = {'5m':72,'15m':48,'30m':24,'1h':36,'4h':21};
     const maxBars = MAX_BARS[tf] || 48;
     const limit = 1500;
     try {
@@ -7361,60 +7379,33 @@ async function calcWinRates() {
     } catch(e) { return null; }
   }
 
-  window._wrMap5m = {};
-  window._wrMap1h = {};
-  window._wrMap4h = {};
-  window._wrMap15m = {};
-  window._wrMap30m = {};
-  window._wrReady5m = false;
-  window._wrReady1h = false;
-  window._wrReady4h = false;
-  window._wrReady15m = false;
-  window._wrReady30m = false;
+  // 初始化 map（若尚未存在）
+  if (!window._wrMap5m)  window._wrMap5m  = {};
+  if (!window._wrMap1h)  window._wrMap1h  = {};
+  if (!window._wrMap4h)  window._wrMap4h  = {};
+  if (!window._wrMap15m) window._wrMap15m = {};
+  if (!window._wrMap30m) window._wrMap30m = {};
 
-  // 計算5M
-  for (const sym of SYMS_5M) {
-    const wr = await _btSym(sym, '5m');
-    if (wr != null) window._wrMap5m[sym] = wr;
+  // 只算指定 TF
+  const TF_SYMS = {
+    '5m':  SYMS_5M,
+    '1h':  SYMS_1H,
+    '4h':  SYMS_4H,
+    '15m': SYMS_15M,
+    '30m': SYMS_30M,
+  };
+  const TF_MAP_KEY = {
+    '5m':'_wrMap5m','1h':'_wrMap1h','4h':'_wrMap4h','15m':'_wrMap15m','30m':'_wrMap30m'
+  };
+  const symsToRun = TF_SYMS[tf];
+  if (!symsToRun) return;
+  const mapKey = TF_MAP_KEY[tf];
+  for (const sym of symsToRun) {
+    const wr = await _btSym(sym, tf);
+    if (wr != null) window[mapKey][sym] = wr;
     await new Promise(r=>setTimeout(r,30));
   }
-  window._wrReady5m = true;
-  if (typeof window._lastScanRender === 'function') window._lastScanRender();
-
-  // 計算1H
-  for (const sym of SYMS_1H) {
-    const wr = await _btSym(sym, '1h');
-    if (wr != null) window._wrMap1h[sym] = wr;
-    await new Promise(r=>setTimeout(r,30));
-  }
-  window._wrReady1h = true;
-  if (typeof window._lastScanRender === 'function') window._lastScanRender();
-
-  // 計算4H
-  for (const sym of SYMS_4H) {
-    const wr = await _btSym(sym, '4h');
-    if (wr != null) window._wrMap4h[sym] = wr;
-    await new Promise(r=>setTimeout(r,30));
-  }
-  window._wrReady4h = true;
-  if (typeof window._lastScanRender === 'function') window._lastScanRender();
-
-  // 計算15M
-  for (const sym of SYMS_15M) {
-    const wr = await _btSym(sym, '15m');
-    if (wr != null) window._wrMap15m[sym] = wr;
-    await new Promise(r=>setTimeout(r,30));
-  }
-  window._wrReady15m = true;
-  if (typeof window._lastScanRender === 'function') window._lastScanRender();
-
-  // 計算30M
-  for (const sym of SYMS_30M) {
-    const wr = await _btSym(sym, '30m');
-    if (wr != null) window._wrMap30m[sym] = wr;
-    await new Promise(r=>setTimeout(r,30));
-  }
-  window._wrReady30m = true;
+  window['_wrReady' + tf] = true;
   if (typeof window._lastScanRender === 'function') window._lastScanRender();
 }
 
@@ -7449,7 +7440,7 @@ async function startAutoScan() {
 }
 
 // Auto-load BTC on start
-window.onload = () => { loadData(); calcWinRates(); startAutoScan(); };
+window.onload = () => { loadData(); calcWinRates('15m'); startAutoScan(); };
 </script>
 
 
