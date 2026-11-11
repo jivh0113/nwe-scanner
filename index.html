@@ -963,11 +963,13 @@
   </div>
   <!-- 時框子tab -->
   <div style="display:flex;gap:4px;background:#e2e8f0;border-radius:6px;padding:3px;margin-bottom:12px;width:fit-content">
+    <button id="nweTab5m" onclick="switchNweTab('5m')" style="padding:4px 16px;font-size:12px;border-radius:4px;border:none;background:transparent;color:#64748b;cursor:pointer;font-family:'JetBrains Mono',monospace">5M</button>
     <button id="nweTab15m" onclick="switchNweTab('15m')" style="padding:4px 16px;font-size:12px;border-radius:4px;border:none;background:#0f766e;color:#fff;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:600">15M</button>
     <button id="nweTab30m" onclick="switchNweTab('30m')" style="padding:4px 16px;font-size:12px;border-radius:4px;border:none;background:transparent;color:#64748b;cursor:pointer;font-family:'JetBrains Mono',monospace">30M</button>
     <button id="nweTab1h" onclick="switchNweTab('1h')" style="padding:4px 16px;font-size:12px;border-radius:4px;border:none;background:transparent;color:#64748b;cursor:pointer;font-family:'JetBrains Mono',monospace">1H</button>
     <button id="nweTab4h" onclick="switchNweTab('4h')" style="padding:4px 16px;font-size:12px;border-radius:4px;border:none;background:transparent;color:#64748b;cursor:pointer;font-family:'JetBrains Mono',monospace">4H</button>
   </div>
+  <div id="nweContent5m" style="display:none"><div style="color:#94a3b8;font-size:12px;padding:8px">尚未掃描</div></div>
   <div id="nweContent15m"><div style="color:#94a3b8;font-size:12px;padding:8px">尚未掃描</div></div>
   <div id="nweContent30m" style="display:none"><div style="color:#94a3b8;font-size:12px;padding:8px">尚未掃描</div></div>
   <div id="nweContent1h" style="display:none"><div style="color:#94a3b8;font-size:12px;padding:8px">尚未掃描</div></div>
@@ -6279,6 +6281,16 @@ async function runLuxScan() {
   if(status) status.textContent='掃描中...';
 
   // 各TF獨立幣種清單（依回測勝率>80%篩選，10根窗口）
+  const SYMS_5M = [
+    'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
+    'LTCUSDT','PYTHUSDT','UNIUSDT','FILUSDT','APTUSDT','ONDOUSDT','RSRUSDT','TIAUSDT',
+    'AVAXUSDT','INJUSDT','STXUSDT','BCHUSDT','AAVEUSDT','SUIUSDT','TAOUSDT','TRUMPUSDT',
+    'PENGUUSDT','HYPEUSDT','JTOUSDT','VIRTUALUSDT','DASHUSDT','JUPUSDT','XLMUSDT',
+    'ETCUSDT','LDOUSDT','CRVUSDT','SANDUSDT','POLUSDT','KAIAUSDT','CFXUSDT','ICPUSDT',
+    'ADAUSDT','DOTUSDT','LINKUSDT','OPUSDT','MKRUSDT','WIFUSDT','TONUSDT','EIGENUSDT',
+    'MOVEUSDT','ORDIUSDT','ARUSDT','GALAUSDT','MATICUSDT','FETUSDT','RENDERUSDT',
+    'APEUSDT','GMTUSDT','FLOWUSDT','EGLDUSDT','VETUSDT','ZILUSDT','RVNUSDT','CHZUSDT'
+  ];
   const SYMS_1H = [
     'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
     'LTCUSDT','PYTHUSDT','UNIUSDT','FILUSDT','APTUSDT','ONDOUSDT','RSRUSDT','TIAUSDT',
@@ -6322,6 +6334,7 @@ async function runLuxScan() {
   ]; // 61幣（排除AAVEUSDT 75.0%、TRXUSDT）
 
   // ⭐ 精選清單（NWE回測20x SL5%勝率≥90%）
+  const SYMS_SELECT_5M  = ['BTCUSDT','BNBUSDT','FILUSDT','MKRUSDT','VETUSDT','SUIUSDT','ETCUSDT','AVAXUSDT','UNIUSDT','PYTHUSDT'];
   const SYMS_SELECT_15M = ['BTCUSDT','BNBUSDT','FILUSDT','MKRUSDT','VETUSDT','SUIUSDT','ETCUSDT','AVAXUSDT','UNIUSDT','PYTHUSDT'];
   const SYMS_SELECT_30M = ['BNBUSDT','BTCUSDT','LTCUSDT','AVAXUSDT','BCHUSDT','NEARUSDT','MKRUSDT'];
   const SYMS_SELECT_1H  = ['BNBUSDT','VETUSDT','ETCUSDT','LTCUSDT','PENGUUSDT','MKRUSDT','WLDUSDT','PYTHUSDT','VIRTUALUSDT','NEARUSDT','JTOUSDT'];
@@ -6329,6 +6342,7 @@ async function runLuxScan() {
 
   // 根據模式選清單
   const _nweMode = window._nweMode || 'all';
+  const tf5m  = _nweMode==='select' ? SYMS_SELECT_5M  : SYMS_5M;
   const tf15m = _nweMode==='select' ? SYMS_SELECT_15M : SYMS_15M;
   const tf30m = _nweMode==='select' ? SYMS_SELECT_30M : SYMS_30M;
   const tf1h  = _nweMode==='select' ? SYMS_SELECT_1H  : SYMS_1H;
@@ -6340,10 +6354,10 @@ async function runLuxScan() {
   const LUX_H=8, LUX_MULT=3;
   const BATCH=10;
   const RETRACE_TOL = 0.005; // 回撤容差 ±0.5%
-  const TIMEFRAMES = ['15m','30m','1h','4h'];
+  const TIMEFRAMES = ['5m','15m','30m','1h','4h'];
   // 各TF訊號時效（K棒數 × K棒毫秒）
-  const TF_MS = { '15m': 15*60000, '30m': 30*60000, '1h': 60*60000, '4h': 240*60000 };
-  const TF_MAX_BARS = { '15m': 5, '30m': 5, '1h': 5, '4h': 2 };
+  const TF_MS = { '5m': 5*60000, '15m': 15*60000, '30m': 30*60000, '1h': 60*60000, '4h': 240*60000 };
+  const TF_MAX_BARS = { '5m': 5, '15m': 5, '30m': 5, '1h': 5, '4h': 2 };
 
   // 計算EMA20
   function calcEma20(closes) {
@@ -6376,9 +6390,9 @@ async function runLuxScan() {
     let icon, dc;
     icon = isBull ? '▲ 做多（前1根收盤突破下軌）' : '▼ 做空（前1根收盤突破上軌）';
     dc = isBull ? '#059669' : '#dc2626';
-    const hasWr = (tf === '1h' || tf === '4h' || tf === '15m' || tf === '30m');
-    const wrMap = tf === '1h' ? (window._wrMap1h||{}) : tf === '4h' ? (window._wrMap4h||{}) : tf === '15m' ? (window._wrMap15m||{}) : tf === '30m' ? (window._wrMap30m||{}) : {};
-    const wrReady = tf === '1h' ? window._wrReady1h : tf === '4h' ? window._wrReady4h : tf === '15m' ? window._wrReady15m : tf === '30m' ? window._wrReady30m : false;
+    const hasWr = (tf === '5m' || tf === '1h' || tf === '4h' || tf === '15m' || tf === '30m');
+    const wrMap = tf === '5m' ? (window._wrMap5m||{}) : tf === '1h' ? (window._wrMap1h||{}) : tf === '4h' ? (window._wrMap4h||{}) : tf === '15m' ? (window._wrMap15m||{}) : tf === '30m' ? (window._wrMap30m||{}) : {};
+    const wrReady = tf === '5m' ? window._wrReady5m : tf === '1h' ? window._wrReady1h : tf === '4h' ? window._wrReady4h : tf === '15m' ? window._wrReady15m : tf === '30m' ? window._wrReady30m : false;
     const rows = list.slice(0,20).map(r=>{
       const tpsl = calcTPSL(tf, isBull, r.price, r.nweMid);
       const dirColor = tpsl.dir.includes('做多') ? '#059669' : '#dc2626';
@@ -6445,7 +6459,7 @@ async function runLuxScan() {
     let done=0;
 
     // 依TF選對應幣種清單
-    const syms = tf === '4h' ? tf4h : tf === '15m' ? tf15m : tf === '30m' ? tf30m : tf1h;
+    const syms = tf === '5m' ? tf5m : tf === '4h' ? tf4h : tf === '15m' ? tf15m : tf === '30m' ? tf30m : tf1h;
 
     for (let i=0; i<syms.length; i+=BATCH) {
       const batch = syms.slice(i, i+BATCH);
@@ -6591,7 +6605,7 @@ async function _tgNotify(tfResults) {
       if (window._tgSentKeys.has(key)) continue;
       window._tgSentKeys.add(key);
       const dir = isBull ? '做多 🟢' : '做空 🔴';
-      const wrMap = tf==='1h'?(window._wrMap1h||{}):tf==='4h'?(window._wrMap4h||{}):tf==='15m'?(window._wrMap15m||{}):(window._wrMap30m||{});
+      const wrMap = tf==='5m'?(window._wrMap5m||{}):tf==='1h'?(window._wrMap1h||{}):tf==='4h'?(window._wrMap4h||{}):tf==='15m'?(window._wrMap15m||{}):(window._wrMap30m||{});
       const wr = wrMap[r.sym+'USDT'];
       const wrStr = wr!=null ? `勝率: ${wr.toFixed(1)}%` : '';
       const tpRemain2 = isBull ? (tpsl.tp - r.price) / r.price * 100 : (r.price - tpsl.tp) / r.price * 100;
@@ -6652,7 +6666,7 @@ function switchTab(tab) {
 
 // ══════════ NWE子tab切換 ══════════
 function switchNweTab(tf) {
-  ['15m','30m','1h','4h'].forEach(t => {
+  ['5m','15m','30m','1h','4h'].forEach(t => {
     document.getElementById('nweContent'+t).style.display = t===tf ? '' : 'none';
     const btn = document.getElementById('nweTab'+t);
     if(t===tf){ btn.style.background='#0f766e'; btn.style.color='#fff'; btn.style.fontWeight='600'; }
@@ -7347,14 +7361,25 @@ async function calcWinRates() {
     } catch(e) { return null; }
   }
 
+  window._wrMap5m = {};
   window._wrMap1h = {};
   window._wrMap4h = {};
   window._wrMap15m = {};
   window._wrMap30m = {};
+  window._wrReady5m = false;
   window._wrReady1h = false;
   window._wrReady4h = false;
   window._wrReady15m = false;
   window._wrReady30m = false;
+
+  // 計算5M
+  for (const sym of SYMS_5M) {
+    const wr = await _btSym(sym, '5m');
+    if (wr != null) window._wrMap5m[sym] = wr;
+    await new Promise(r=>setTimeout(r,30));
+  }
+  window._wrReady5m = true;
+  if (typeof window._lastScanRender === 'function') window._lastScanRender();
 
   // 計算1H
   for (const sym of SYMS_1H) {
