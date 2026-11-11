@@ -7271,7 +7271,9 @@ async function runStrengthScan() {
 // ══════════════════════════════════════════
 async function calcWinRates(tf) {
   if (!tf) tf = '15m';
-  if (window['_wrReady' + tf]) return;  // 已算過，跳過
+  if (window['_wrReady' + tf]) return;   // 已算過
+  if (window['_wrRunning' + tf]) return; // 正在算，防重複
+  window['_wrRunning' + tf] = true;
   const _H = 8, _MULT = 3, _SL_PCT = 0.08;
   const SYMS_5M = [
     'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','NEARUSDT','WLDUSDT',
@@ -7331,9 +7333,9 @@ async function calcWinRates(tf) {
   }
 
   async function _btSym(sym, tf) {
-    const MAX_BARS = {'5m':72,'15m':48,'30m':24,'1h':36,'4h':21};
+    const MAX_BARS = {'5m':48,'15m':48,'30m':24,'1h':36,'4h':21};
     const maxBars = MAX_BARS[tf] || 48;
-    const limit = 1500;
+    const limit = 500;
     try {
       const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=${limit}`);
       if (!r.ok) return null;
