@@ -6461,15 +6461,38 @@ async function runLuxScan() {
     // 依TF選對應幣種清單
     const syms = tf === '5m' ? tf5m : tf === '4h' ? tf4h : tf === '15m' ? tf15m : tf === '30m' ? tf30m : tf1h;
 
+    // 4H MSS 判斷函數（用於 5m/15m/30m/1h TF）
+    const MSS_N = 20;
+    function calc4hMSSLast(raw4h) {
+      if (!raw4h || raw4h.length < MSS_N + 1) return null;
+      const n = raw4h.length;
+      const closes = raw4h.map(k => parseFloat(k[4]));
+      const highs  = raw4h.map(k => parseFloat(k[2]));
+      const lows   = raw4h.map(k => parseFloat(k[3]));
+      // 只算最後一根（最新 4H bar）
+      const i = n - 1;
+      const prevH = Math.max(...highs.slice(i - MSS_N, i));
+      const prevL = Math.min(...lows.slice(i - MSS_N, i));
+      if (closes[i] > prevH) return 'bull';
+      if (closes[i] < prevL) return 'bear';
+      return null;
+    }
+
     for (let i=0; i<syms.length; i+=BATCH) {
       const batch = syms.slice(i, i+BATCH);
-      const fetches = batch.map(sym =>
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1502`)
-          .then(r=>r.ok?r.json():null).catch(()=>null)
-      );
-      const raws = await Promise.all(fetches);
+      // 5m: 同時拉 5m K棒 + 4H K棒（用於 MSS 判斷）
+      const fetches = batch.map(sym => {
+        const f5m = fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1502`)
+          .then(r=>r.ok?r.json():null).catch(()=>null);
+        const f4h = tf !== '4h'
+          ? fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=${MSS_N+2}`)
+              .then(r=>r.ok?r.json():null).catch(()=>null)
+          : Promise.resolve(null);
+        return Promise.all([f5m, f4h]);
+      });
+      const rawPairs = await Promise.all(fetches);
 
-      raws.forEach((raw, j) => {
+      rawPairs.forEach(([raw, raw4h], j) => {
         const sym = batch[j];
         done++;
         if (!raw || raw.length < 50) return;
@@ -6522,6 +6545,13 @@ async function runLuxScan() {
         // 整數TP過濾：TP與現價差距≤0.1%跳過
         const roundTP = findRoundTP(curClose, longSignal);
         if (Math.abs(roundTP - curClose) / curClose <= 0.001) return;
+
+        // 4H MSS 過濾（5m/15m/30m/1h）：方向明確相反則跳過，null=允許
+        if (tf !== '4h') {
+          const mss4h = calc4hMSSLast(raw4h);
+          if (mss4h === 'bear' && longSignal)  return; // 4H看跌但做多 → 跳過
+          if (mss4h === 'bull' && shortSignal) return; // 4H看漲但做空 → 跳過
+        }
 
         const nweMid = out;
         // 計算實際方向（順向）
