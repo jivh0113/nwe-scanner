@@ -6463,6 +6463,40 @@ async function runLuxScan() {
 
     // 4H MSS 判斷函數（用於 5m/15m/30m/1h TF）
     const MSS_N = 20;
+
+    // 4H結構確認：做多看前N根4H最低點，做空看最高點
+    function check4hStruct(raw4h, entry, isLong) {
+      if (!raw4h || raw4h.length < MSS_N + 1) return true;
+      const slice = raw4h.slice(-MSS_N - 1, -1);
+      if (isLong) {
+        const minLow = Math.min(...slice.map(k => parseFloat(k[3])));
+        return entry > minLow;
+      } else {
+        const maxHigh = Math.max(...slice.map(k => parseFloat(k[2])));
+        return entry < maxHigh;
+      }
+    }
+
+    // 流動性空間：TP前有無牆壁
+    function checkLiqSpace(raw4h, entry, tp, isLong) {
+      if (!raw4h || raw4h.length < 5) return true;
+      const tpDist = Math.abs(tp - entry);
+      const slice = raw4h.slice(0, -1);
+      if (isLong) {
+        for (let i = slice.length - 1; i >= 0; i--) {
+          const h = parseFloat(slice[i][2]);
+          if (h > entry) return (h - entry) > tpDist;
+        }
+        return true;
+      } else {
+        for (let i = slice.length - 1; i >= 0; i--) {
+          const l = parseFloat(slice[i][3]);
+          if (l < entry) return (entry - l) > tpDist;
+        }
+        return true;
+      }
+    }
+
     function calc4hMSSLast(raw4h) {
       if (!raw4h || raw4h.length < MSS_N + 1) return null;
       const n = raw4h.length;
@@ -6485,7 +6519,7 @@ async function runLuxScan() {
         const f5m = fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1502`)
           .then(r=>r.ok?r.json():null).catch(()=>null);
         const f4h = tf !== '4h'
-          ? fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=${MSS_N+2}`)
+          ? fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=55`)
               .then(r=>r.ok?r.json():null).catch(()=>null)
           : Promise.resolve(null);
         return Promise.all([f5m, f4h]);
@@ -6551,6 +6585,13 @@ async function runLuxScan() {
           const mss4h = calc4hMSSLast(raw4h);
           if (mss4h === 'bear' && longSignal)  return; // 4H看跌但做多 → 跳過
           if (mss4h === 'bull' && shortSignal) return; // 4H看漲但做空 → 跳過
+
+          // 4H結構確認＋流動性空間過濾
+          const rawTP2 = findRoundTP(curClose, longSignal);
+          const capTP2 = longSignal ? curClose * 1.03 : curClose * 0.97;
+          const realTP = longSignal ? Math.min(rawTP2, capTP2) : Math.max(rawTP2, capTP2);
+          if (!check4hStruct(raw4h, curClose, longSignal)) return;   // 結構破 → 跳過
+          if (!checkLiqSpace(raw4h, curClose, realTP, longSignal)) return; // 牆太近 → 跳過
         }
 
         const nweMid = out;
