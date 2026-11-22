@@ -6426,6 +6426,23 @@ async function runLuxScan() {
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b">${fmtL(tpsl.sl)}</td>
         ${hasWr ? `<td style="padding:4px 5px;font-size:11px;text-align:center">${wrCell}</td>` : ''}
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b;font-weight:600">${r.structBot != null ? fmtL(r.structBot) : '—'}</td>
+        <td style="padding:4px 5px;font-size:11px;font-weight:700;${(()=>{
+          if(r.structBot==null) return 'color:#94a3b8';
+          const dist=Math.abs(r.price-r.structBot)/r.price*100;
+          if(dist>8) return 'color:#dc2626';
+          if(dist>5) return 'color:#f59e0b';
+          if(dist>3) return 'color:#10b981';
+          if(dist>2) return 'color:#0ea5e9';
+          return 'color:#7c3aed';
+        })()}">${(()=>{
+          if(r.structBot==null) return '—';
+          const dist=Math.abs(r.price-r.structBot)/r.price*100;
+          if(dist>8) return '跳過';
+          if(dist>5) return '10x';
+          if(dist>3) return '20x';
+          if(dist>2) return '30x';
+          return '50x';
+        })()}</td>
         <td style="padding:4px 5px;font-size:10px;color:#94a3b8;white-space:nowrap">${r.time||'—'}</td>
       </tr>`;
     }).join('');
@@ -6443,6 +6460,7 @@ async function runLuxScan() {
           <td style="padding:3px 5px;color:#f59e0b">SL(-8%)</td>
           ${hasWr ? '<td style="padding:3px 5px">勝率</td>' : ''}
           <td style="padding:3px 5px;color:#f59e0b">4H結構底</td>
+          <td style="padding:3px 5px;color:#7c3aed">建議槓桿</td>
           <td style="padding:3px 5px">訊號時間</td>
         </tr>${rows}
       </table>
