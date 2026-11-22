@@ -6425,6 +6425,7 @@ async function runLuxScan() {
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#10b981;font-weight:600">+${Math.round((Math.abs(tpsl.tp-r.price)/r.price)*12*100)}%</td>
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b">${fmtL(tpsl.sl)}</td>
         ${hasWr ? `<td style="padding:4px 5px;font-size:11px;text-align:center">${wrCell}</td>` : ''}
+        <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b;font-weight:600">${r.structBot != null ? fmtL(r.structBot) : '—'}</td>
         <td style="padding:4px 5px;font-size:10px;color:#94a3b8;white-space:nowrap">${r.time||'—'}</td>
       </tr>`;
     }).join('');
@@ -6441,6 +6442,7 @@ async function runLuxScan() {
           <td style="padding:3px 5px;color:#10b981">12x利</td>
           <td style="padding:3px 5px;color:#f59e0b">SL(-8%)</td>
           ${hasWr ? '<td style="padding:3px 5px">勝率</td>' : ''}
+          <td style="padding:3px 5px;color:#f59e0b">4H結構底</td>
           <td style="padding:3px 5px">訊號時間</td>
         </tr>${rows}
       </table>
@@ -6598,7 +6600,16 @@ async function runLuxScan() {
         // 計算實際方向（順向）
         const actualDir = longSignal ? 'long' : 'short';
 
-        const entry = { sym: sym.replace('USDT',''), price: curClose, nweMid, actualDir, time: sigTime };
+        // 4H結構底（做多：前20根最低點；做空：前20根最高點）
+        let structBot = null;
+        if (raw4h && raw4h.length >= MSS_N + 1) {
+          const slice4h = raw4h.slice(-MSS_N - 1, -1);
+          structBot = longSignal
+            ? Math.min(...slice4h.map(k => parseFloat(k[3])))
+            : Math.max(...slice4h.map(k => parseFloat(k[2])));
+        }
+
+        const entry = { sym: sym.replace('USDT',''), price: curClose, nweMid, actualDir, time: sigTime, structBot, isLong: longSignal };
         if (longSignal) bullResults.push(entry);
         else bearResults.push(entry);
       });
