@@ -6443,6 +6443,7 @@ async function runLuxScan() {
           if(dist>2) return '30x';
           return '50x';
         })()}</td>
+        <td style="padding:4px 5px;font-size:11px;font-weight:700;${r.mss4h==='bull'?'color:#059669':r.mss4h==='bear'?'color:#dc2626':'color:#94a3b8'}">${r.mss4h==='bull'?'▲多':r.mss4h==='bear'?'▼空':'—'}</td>
         <td style="padding:4px 5px;font-size:10px;color:#94a3b8;white-space:nowrap">${r.time||'—'}</td>
       </tr>`;
     }).join('');
@@ -6461,6 +6462,7 @@ async function runLuxScan() {
           ${hasWr ? '<td style="padding:3px 5px">勝率</td>' : ''}
           <td style="padding:3px 5px;color:#f59e0b">4H結構底</td>
           <td style="padding:3px 5px;color:#7c3aed">建議槓桿</td>
+          <td style="padding:3px 5px;color:#0ea5e9">4H方向</td>
           <td style="padding:3px 5px">訊號時間</td>
         </tr>${rows}
       </table>
@@ -6627,7 +6629,8 @@ async function runLuxScan() {
             : Math.max(...slice4h.map(k => parseFloat(k[2])));
         }
 
-        const entry = { sym: sym.replace('USDT',''), price: curClose, nweMid, actualDir, time: sigTime, structBot, isLong: longSignal };
+        const mss4hDir = (tf !== '4h') ? calc4hMSSLast(raw4h) : null;
+        const entry = { sym: sym.replace('USDT',''), price: curClose, nweMid, actualDir, time: sigTime, structBot, isLong: longSignal, mss4h: mss4hDir };
         if (longSignal) bullResults.push(entry);
         else bearResults.push(entry);
       });
