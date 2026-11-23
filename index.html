@@ -7547,8 +7547,9 @@ window.onload = () => { loadData(); calcWinRates('15m'); startAutoScan(); };
 // ── 倉位計算機 ──────────────────────────────────────────
 function openPositionCalc(price, structBot, isLong) {
   const dist = structBot != null ? Math.abs(price - structBot) / price * 100 : null;
-  document.getElementById('pc-price').textContent = price ? fmtL(price) : '—';
-  document.getElementById('pc-structbot').textContent = structBot != null ? fmtL(structBot) : '—';
+  const _fmt = v => v >= 1 ? v.toFixed(4) : v.toPrecision(5);
+  document.getElementById('pc-price').textContent = price ? _fmt(price) : '—';
+  document.getElementById('pc-structbot').textContent = structBot != null ? _fmt(structBot) : '—';
   document.getElementById('pc-dist').textContent = dist != null ? dist.toFixed(2) + '%' : '—';
   document.getElementById('pc-dir').textContent = isLong ? '做多' : '做空';
   document.getElementById('pc-dist').dataset.dist = dist != null ? dist : '';
