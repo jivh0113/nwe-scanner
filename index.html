@@ -7562,12 +7562,12 @@ function pcCalc() {
   const capital = parseFloat(document.getElementById('pc-capital').value) || 100;
   const distRaw = document.getElementById('pc-dist').dataset.dist;
   const dist = distRaw !== '' ? parseFloat(distRaw) : null;
-  const maxLoss = capital * 0.03;
+  const invest = capital * 0.1;
   const configs = [
-    {lev:50,cls:'#7c3aed',range:'<2%',   mid:1.0},
-    {lev:30,cls:'#0ea5e9',range:'2–3%',  mid:2.5},
-    {lev:20,cls:'#10b981',range:'3–5%',  mid:4.0},
-    {lev:10,cls:'#f59e0b',range:'5–8%',  mid:6.5},
+    {lev:50,cls:'#7c3aed',range:'<2%'},
+    {lev:30,cls:'#0ea5e9',range:'2–3%'},
+    {lev:20,cls:'#10b981',range:'3–5%'},
+    {lev:10,cls:'#f59e0b',range:'5–8%'},
   ];
   let matchLev = null;
   if (dist != null) {
@@ -7581,20 +7581,20 @@ function pcCalc() {
     rows = `<tr><td colspan="5" style="text-align:center;color:#dc2626;font-weight:700;padding:12px">距離 ${dist.toFixed(2)}% > 8%，建議跳過</td></tr>`;
   } else {
     for (const c of configs) {
-      const inv = maxLoss / (c.mid / 100 * c.lev);
-      const pos = inv * c.lev;
+      const pos = invest * c.lev;
+      const loss = dist != null ? invest * (dist / 100) * c.lev : null;
       const isMatch = matchLev === c.lev;
       rows += `<tr style="${isMatch ? 'background:rgba(59,130,246,0.08)' : 'opacity:0.45'}">
         <td style="padding:7px 10px;font-weight:700;color:${c.cls}">${c.lev}x</td>
         <td style="padding:7px 10px;color:#64748b;font-size:12px">${c.range}</td>
-        <td style="padding:7px 10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${isMatch?'#3b82f6':'inherit'};font-size:15px">${inv.toFixed(2)} U</td>
+        <td style="padding:7px 10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${isMatch?'#3b82f6':'inherit'};font-size:15px">${invest.toFixed(2)} U</td>
         <td style="padding:7px 10px;font-family:'JetBrains Mono',monospace;color:#64748b">${pos.toFixed(1)} U</td>
-        <td style="padding:7px 10px;color:#64748b;font-size:12px">${maxLoss.toFixed(2)} U</td>
+        <td style="padding:7px 10px;color:#dc2626;font-size:12px">${loss != null ? loss.toFixed(2)+' U' : '—'}</td>
       </tr>`;
     }
   }
   document.getElementById('pc-rows').innerHTML = rows;
-  document.getElementById('pc-maxloss').textContent = maxLoss.toFixed(2);
+  document.getElementById('pc-maxloss').textContent = invest.toFixed(2);
 }
 </script>
 
@@ -7627,7 +7627,7 @@ function pcCalc() {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <label style="font-size:12px;font-weight:600;color:#64748b;white-space:nowrap">本金 (U)</label>
         <input type="number" id="pc-capital" value="100" min="1" step="1" oninput="pcCalc()" style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace;width:120px;outline:none">
-        <span style="font-size:12px;color:#94a3b8">最大虧損：<strong id="pc-maxloss" style="color:#dc2626">3.00</strong> U</span>
+        <span style="font-size:12px;color:#94a3b8">投入（10%本金）：<strong id="pc-maxloss" style="color:#3b82f6">10.00</strong> U</span>
       </div>
       <table style="width:100%;border-collapse:collapse">
         <thead>
