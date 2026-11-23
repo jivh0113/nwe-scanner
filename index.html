@@ -6429,7 +6429,7 @@ async function runLuxScan() {
         <td style="padding:4px 5px;font-size:11px;font-weight:700;cursor:pointer;${(()=>{
           if(r.structBot==null) return 'color:#94a3b8';
           const dist=Math.abs(r.price-r.structBot)/r.price*100;
-          if(dist>8) return 'color:#dc2626';
+          if(dist>8) return 'color:#94a3b8';
           if(dist>5) return 'color:#f59e0b';
           if(dist>3) return 'color:#10b981';
           if(dist>2) return 'color:#0ea5e9';
@@ -6437,7 +6437,7 @@ async function runLuxScan() {
         })()}" onclick="event.stopPropagation();openPositionCalc(${r.price},${r.structBot != null ? r.structBot : 'null'},${isBull})">${(()=>{
           if(r.structBot==null) return '—';
           const dist=Math.abs(r.price-r.structBot)/r.price*100;
-          if(dist>8) return '跳過';
+          if(dist>8) return '5x';
           if(dist>5) return '10x';
           if(dist>3) return '20x';
           if(dist>2) return '30x';
@@ -7571,6 +7571,7 @@ function pcCalc() {
     {lev:30,cls:'#0ea5e9',range:'2–3%'},
     {lev:20,cls:'#10b981',range:'3–5%'},
     {lev:10,cls:'#f59e0b',range:'5–8%'},
+    {lev:5, cls:'#94a3b8',range:'>8%'},
   ];
   let matchLev = null;
   if (dist != null) {
@@ -7578,11 +7579,10 @@ function pcCalc() {
     else if (dist < 3) matchLev = 30;
     else if (dist < 5) matchLev = 20;
     else if (dist < 8) matchLev = 10;
+    else matchLev = 5;
   }
   let rows = '';
-  if (dist != null && dist >= 8) {
-    rows = `<tr><td colspan="5" style="text-align:center;color:#dc2626;font-weight:700;padding:12px">距離 ${dist.toFixed(2)}% > 8%，建議跳過</td></tr>`;
-  } else {
+  if (false) {
     for (const c of configs) {
       const pos = invest * c.lev;
       const loss = dist != null ? invest * (dist / 100) * c.lev : null;
