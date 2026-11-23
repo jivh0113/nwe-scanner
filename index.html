@@ -6426,7 +6426,7 @@ async function runLuxScan() {
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b">${fmtL(tpsl.sl)}</td>
         ${hasWr ? `<td style="padding:4px 5px;font-size:11px;text-align:center">${wrCell}</td>` : ''}
         <td style="padding:4px 5px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#f59e0b;font-weight:600">${r.structBot != null ? fmtL(r.structBot) : '—'}</td>
-        <td style="padding:4px 5px;font-size:11px;font-weight:700;${(()=>{
+        <td style="padding:4px 5px;font-size:11px;font-weight:700;cursor:pointer;${(()=>{
           if(r.structBot==null) return 'color:#94a3b8';
           const dist=Math.abs(r.price-r.structBot)/r.price*100;
           if(dist>8) return 'color:#dc2626';
@@ -6434,7 +6434,7 @@ async function runLuxScan() {
           if(dist>3) return 'color:#10b981';
           if(dist>2) return 'color:#0ea5e9';
           return 'color:#7c3aed';
-        })()}">${(()=>{
+        })()}" onclick="event.stopPropagation();openPositionCalc(${r.price},${r.structBot != null ? r.structBot : 'null'},${isBull})">${(()=>{
           if(r.structBot==null) return '—';
           const dist=Math.abs(r.price-r.structBot)/r.price*100;
           if(dist>8) return '跳過';
@@ -7543,8 +7543,106 @@ async function startAutoScan() {
 
 // Auto-load BTC on start
 window.onload = () => { loadData(); calcWinRates('15m'); startAutoScan(); };
+
+// ── 倉位計算機 ──────────────────────────────────────────
+function openPositionCalc(price, structBot, isLong) {
+  const dist = structBot != null ? Math.abs(price - structBot) / price * 100 : null;
+  document.getElementById('pc-price').textContent = price ? fmtL(price) : '—';
+  document.getElementById('pc-structbot').textContent = structBot != null ? fmtL(structBot) : '—';
+  document.getElementById('pc-dist').textContent = dist != null ? dist.toFixed(2) + '%' : '—';
+  document.getElementById('pc-dir').textContent = isLong ? '做多' : '做空';
+  document.getElementById('pc-dist').dataset.dist = dist != null ? dist : '';
+  const capEl = document.getElementById('pc-capital');
+  if (!capEl.value) capEl.value = 100;
+  pcCalc();
+  document.getElementById('pc-modal').style.display = 'flex';
+}
+function pcCalc() {
+  const capital = parseFloat(document.getElementById('pc-capital').value) || 100;
+  const distRaw = document.getElementById('pc-dist').dataset.dist;
+  const dist = distRaw !== '' ? parseFloat(distRaw) : null;
+  const maxLoss = capital * 0.03;
+  const configs = [
+    {lev:50,cls:'#7c3aed',range:'<2%',   mid:1.0},
+    {lev:30,cls:'#0ea5e9',range:'2–3%',  mid:2.5},
+    {lev:20,cls:'#10b981',range:'3–5%',  mid:4.0},
+    {lev:10,cls:'#f59e0b',range:'5–8%',  mid:6.5},
+  ];
+  let matchLev = null;
+  if (dist != null) {
+    if (dist < 2) matchLev = 50;
+    else if (dist < 3) matchLev = 30;
+    else if (dist < 5) matchLev = 20;
+    else if (dist < 8) matchLev = 10;
+  }
+  let rows = '';
+  if (dist != null && dist >= 8) {
+    rows = `<tr><td colspan="5" style="text-align:center;color:#dc2626;font-weight:700;padding:12px">距離 ${dist.toFixed(2)}% > 8%，建議跳過</td></tr>`;
+  } else {
+    for (const c of configs) {
+      const inv = maxLoss / (c.mid / 100 * c.lev);
+      const pos = inv * c.lev;
+      const isMatch = matchLev === c.lev;
+      rows += `<tr style="${isMatch ? 'background:rgba(59,130,246,0.08)' : 'opacity:0.45'}">
+        <td style="padding:7px 10px;font-weight:700;color:${c.cls}">${c.lev}x</td>
+        <td style="padding:7px 10px;color:#64748b;font-size:12px">${c.range}</td>
+        <td style="padding:7px 10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${isMatch?'#3b82f6':'inherit'};font-size:15px">${inv.toFixed(2)} U</td>
+        <td style="padding:7px 10px;font-family:'JetBrains Mono',monospace;color:#64748b">${pos.toFixed(1)} U</td>
+        <td style="padding:7px 10px;color:#64748b;font-size:12px">${maxLoss.toFixed(2)} U</td>
+      </tr>`;
+    }
+  }
+  document.getElementById('pc-rows').innerHTML = rows;
+  document.getElementById('pc-maxloss').textContent = maxLoss.toFixed(2);
+}
 </script>
 
+<!-- 倉位計算機 Modal -->
+<div id="pc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#fff;border-radius:14px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px">倉位計算機</div>
+      <button onclick="document.getElementById('pc-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;line-height:1">×</button>
+    </div>
+    <div style="padding:14px 18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">方向</div>
+          <div id="pc-dir" style="font-weight:700;font-size:13px;margin-top:2px">—</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">入場價</div>
+          <div id="pc-price" style="font-weight:700;font-size:13px;margin-top:2px;font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">結構底</div>
+          <div id="pc-structbot" style="font-weight:700;font-size:13px;margin-top:2px;font-family:'JetBrains Mono',monospace">—</div>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">距離</div>
+          <div id="pc-dist" style="font-weight:700;font-size:13px;margin-top:2px">—</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <label style="font-size:12px;font-weight:600;color:#64748b;white-space:nowrap">本金 (U)</label>
+        <input type="number" id="pc-capital" value="100" min="1" step="1" oninput="pcCalc()" style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace;width:120px;outline:none">
+        <span style="font-size:12px;color:#94a3b8">最大虧損：<strong id="pc-maxloss" style="color:#dc2626">3.00</strong> U</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid #e2e8f0">
+            <th style="padding:5px 10px;font-size:11px;font-weight:600;color:#94a3b8;text-align:left;text-transform:uppercase;letter-spacing:0.4px">槓桿</th>
+            <th style="padding:5px 10px;font-size:11px;font-weight:600;color:#94a3b8;text-align:left;text-transform:uppercase;letter-spacing:0.4px">距離範圍</th>
+            <th style="padding:5px 10px;font-size:11px;font-weight:600;color:#94a3b8;text-align:left;text-transform:uppercase;letter-spacing:0.4px">建議投入</th>
+            <th style="padding:5px 10px;font-size:11px;font-weight:600;color:#94a3b8;text-align:left;text-transform:uppercase;letter-spacing:0.4px">名義倉位</th>
+            <th style="padding:5px 10px;font-size:11px;font-weight:600;color:#94a3b8;text-align:left;text-transform:uppercase;letter-spacing:0.4px">最大虧損</th>
+          </tr>
+        </thead>
+        <tbody id="pc-rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
