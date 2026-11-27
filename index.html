@@ -6571,30 +6571,34 @@ async function runLuxScan() {
         const nweLen = lN; // 最多 WIN 根
         // 只算 NWE 最後一個點（i=0，最新那根，即 src[0] = prevClose）的雙向加權均值
         // 同時算所有點的 NWE 以計算 SAE
-        // Pine Script repaint 模式：src[i] 中 i=0 最新，i=lN-1 最舊
-        // nwe[i] = 以 i 為中心的雙向 Gaussian 加權均值，i=0 對應最新 bar
-        const nwe = new Array(nweLen);
+        // JS src: index 0=最舊, index lN-1=最新(prevClose)
+        // Pine Script: src[0]=最新, src[i] i越大越舊
+        // 對應關係: Pine src[i] = JS src[lN-1-i]
+        // Pine nwe[i] = 以Pine i為中心的雙向Gaussian = 以JS (lN-1-i)為中心
+        // 只需算最新那根(Pine i=0, JS idx=lN-1)的NWE值和SAE
         const HALF_WIN = Math.ceil(3 * LUX_H); // ±3H 以外 Gaussian 權重可忽略
-        for (let i = 0; i < nweLen; i++) {
+        // 對每個JS index k，算NWE(k)：以k為中心，鄰居用JS src值
+        const nwe = new Array(nweLen);
+        for (let k = 0; k < nweLen; k++) {
           let sum = 0, sumw = 0;
-          const jMin = Math.max(0, i - HALF_WIN);
-          const jMax = Math.min(nweLen - 1, i + HALF_WIN);
+          const jMin = Math.max(0, k - HALF_WIN);
+          const jMax = Math.min(nweLen - 1, k + HALF_WIN);
           for (let j = jMin; j <= jMax; j++) {
-            const w = Math.exp(-((i-j)*(i-j))/(LUX_H*LUX_H*2));
-            sum += src[j] * w; // src[j]: j=0最新，j=lN-1最舊，對應Pine src[j]
+            const w = Math.exp(-((k-j)*(k-j))/(LUX_H*LUX_H*2));
+            sum += src[j] * w;
             sumw += w;
           }
-          nwe[i] = sum / sumw;
+          nwe[k] = sum / sumw;
         }
         let sae = 0;
-        for (let i = 0; i < nweLen; i++) {
-          sae += Math.abs(src[i] - nwe[i]); // src[i] 和 nwe[i] 同一時間點
+        for (let k = 0; k < nweLen; k++) {
+          sae += Math.abs(src[k] - nwe[k]);
         }
         sae = sae / nweLen * LUX_MULT;
-        const out = nwe[0]; // i=0 = 最新 bar（prevClose 那根）的 NWE 值
+        const out = nwe[nweLen - 1]; // JS最新那根(lN-1)的NWE值
         const upper = out + sae;
         const lower = out - sae;
-        const prevClose = src[0]; // src[0] = 最新（倒數第2根收盤）
+        const prevClose = src[lN - 1]; // JS最新 = 倒數第2根收盤
         const curClose  = closes[n - 1];
 
         const longSignal  = prevClose < lower;
