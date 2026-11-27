@@ -6597,6 +6597,7 @@ async function runLuxScan() {
 
         const longSignal  = prevClose < lower;
         const shortSignal = prevClose > upper;
+        if (sym === 'BTCUSDT' || sym === 'HYPEUSDT') console.log(`[NWE DEBUG] ${sym} ${tf} upper=${upper.toFixed(4)} lower=${lower.toFixed(4)} prevClose=${prevClose.toFixed(4)} long=${longSignal} short=${shortSignal}`);
         if (!longSignal && !shortSignal) return;
 
         // 時效過濾：訊號K棒開盤時間距現在超過限制就跳過
