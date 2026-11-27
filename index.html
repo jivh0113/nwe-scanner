@@ -6538,7 +6538,7 @@ async function runLuxScan() {
       const batch = syms.slice(i, i+BATCH);
       // 5m: 同時拉 5m K棒 + 4H K棒（用於 MSS 判斷）
       const fetches = batch.map(sym => {
-        const f5m = fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1502`)
+        const f5m = fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=502`)
           .then(r=>r.ok?r.json():null).catch(()=>null);
         const f4h = tf !== '4h'
           ? fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=4h&limit=55`)
@@ -6562,32 +6562,37 @@ async function runLuxScan() {
           +sigDate.getDate().toString().padStart(2,'0')+' '
           +sigDate.getHours().toString().padStart(2,'0')+':'
           +sigDate.getMinutes().toString().padStart(2,'0');
-        const src = closes.slice(-1501, -1);
+        // repaint 雙向 Gaussian，對齊 Pine Script barstate.islast 模式
+        // src = 倒數第2根以前共 500 根（index 0 = 最新，對應 Pine src[0]）
+        const WIN = 500;
+        const src = closes.slice(-WIN-1, -1); // 500根，最後一個是倒數第2根（prevClose）
         const lN = src.length;
-        if (lN < 100) return;
-
-        const coefs = [];
-        for (let i = 0; i < lN; i++) {
-          coefs.push(Math.exp(-(i*i)/(LUX_H*LUX_H*2)));
-        }
-        const outs = new Array(lN);
-        for (let bar = 0; bar < lN; bar++) {
-          let o = 0, d = 0;
-          for (let i = 0; i <= bar; i++) {
-            o += src[bar - i] * coefs[i];
-            d += coefs[i];
+        if (lN < 50) return;
+        const nweLen = lN; // 最多 WIN 根
+        // 只算 NWE 最後一個點（i=0，最新那根，即 src[0] = prevClose）的雙向加權均值
+        // 同時算所有點的 NWE 以計算 SAE
+        const nwe = new Array(nweLen);
+        const HALF_WIN = Math.ceil(3 * LUX_H); // Gaussian 衰減截斷，±3H 以外忽略
+        for (let i = 0; i < nweLen; i++) {
+          let sum = 0, sumw = 0;
+          const jMin = Math.max(0, i - HALF_WIN);
+          const jMax = Math.min(nweLen - 1, i + HALF_WIN);
+          for (let j = jMin; j <= jMax; j++) {
+            const w = Math.exp(-((i-j)*(i-j))/(LUX_H*LUX_H*2));
+            sum += src[nweLen-1-j] * w;
+            sumw += w;
           }
-          outs[bar] = o / d;
+          nwe[i] = sum / sumw;
         }
-        let maSum = 0;
-        for (let i = 0; i < lN; i++) {
-          maSum += Math.abs(src[i] - outs[i]);
+        let sae = 0;
+        for (let i = 0; i < nweLen; i++) {
+          sae += Math.abs(src[nweLen-1-i] - nwe[i]);
         }
-        const mae = (maSum / lN) * LUX_MULT;
-        const out = outs[lN - 1];
-        const upper = out + mae;
-        const lower = out - mae;
-        const prevClose = src[lN - 1];
+        sae = sae / nweLen * LUX_MULT;
+        const out = nwe[nweLen - 1]; // i=nweLen-1 對應最新 bar（prevClose 那根）
+        const upper = out + sae;
+        const lower = out - sae;
+        const prevClose = src[lN - 1]; // = closes[n-2]（倒數第2根收盤）
         const curClose  = closes[n - 1];
 
         const longSignal  = prevClose < lower;
